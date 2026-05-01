@@ -1,0 +1,17 @@
+# node / next.js
+node_modules/
+.next/
+dist/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# uploaded files
+backend/uploaded_dars/
+
+# os / editor
+.DS_Store
+.vscode/
+.idea/
