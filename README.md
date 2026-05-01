@@ -1,10 +1,10 @@
 # CS 35L Final Project
 
-Web app for UCLA students to upload their DARS pdf and see what classes they still need to take. Eventually it'll also recommend easier classes based on grade distribution data.
+Web app for UCLA students to upload their DARS pdf and see what classes they still need to take. 
 
 ## What works rn
 
-You can upload a DARS pdf on the frontend and the backend saves it to a folder. No parsing or dashboard yet, that's next.
+You can upload a DARS pdf on the frontend and the backend saves it to a folder.
 
 ## Stack
 
