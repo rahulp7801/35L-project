@@ -10,14 +10,23 @@ function formatBytes(b: number) {
   return `${(b / 1024 / 1024).toFixed(2)} MB`;
 }
 
-function fmtNow(d: Date) {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mi = String(d.getMinutes()).padStart(2, "0");
-  return { date: `${yyyy}.${mm}.${dd}`, time: `${hh}:${mi}` };
-}
+const btnBase: React.CSSProperties = {
+  padding: "0.55rem 1rem",
+  borderRadius: 6,
+  border: "1px solid var(--border)",
+  background: "var(--card)",
+  color: "var(--text)",
+  fontWeight: 500,
+  fontSize: "0.9rem",
+  transition: "background 0.15s, border-color 0.15s",
+};
+
+const btnPrimary: React.CSSProperties = {
+  ...btnBase,
+  background: "var(--accent)",
+  borderColor: "var(--accent)",
+  color: "#fff",
+};
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
@@ -37,19 +46,9 @@ export default function Home() {
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
     return () => {
-      // delay revoke so the <embed> has time to swap its src on re-render
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     };
   }, [file]);
-
-  const [fileNo, setFileNo] = useState<string>("F-•••• / DARS");
-  const [now, setNow] = useState<{ date: string; time: string }>({ date: "————.——.——", time: "——:——" });
-
-  useEffect(() => {
-    const n = Math.floor(Math.random() * 9000 + 1000);
-    setFileNo(`F-${n} / DARS`);
-    setNow(fmtNow(new Date()));
-  }, []);
 
   function pickFile(f: File | null) {
     setFile(f);
@@ -77,9 +76,9 @@ export default function Home() {
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           const data = JSON.parse(xhr.responseText);
-          setMsg(data.message ?? "filed.");
+          setMsg(data.message ?? "uploaded");
         } catch {
-          setMsg("filed.");
+          setMsg("uploaded");
         }
         setProgress(100);
         setStatus("done");
@@ -89,7 +88,7 @@ export default function Home() {
       }
     });
     xhr.addEventListener("error", () => {
-      setMsg("transmission failed");
+      setMsg("upload failed");
       setStatus("error");
     });
 
@@ -98,242 +97,192 @@ export default function Home() {
   }
 
   return (
-    <main className="relative min-h-screen overflow-x-hidden">
-      {/* corner: form tab + date stamp */}
-      <header className="absolute inset-x-0 top-0 z-10 flex items-start justify-between px-6 pt-5 sm:px-10">
-        <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.2em] text-ink/70">
-          <span className="rounded-[2px] border border-ink/50 bg-paper-2/70 px-2 py-1">{fileNo}</span>
-          <span className="hidden sm:inline">Bureau of Audits · Intake Desk</span>
-        </div>
-        <div className="text-right font-mono text-[10px] uppercase tracking-[0.2em] text-ink/70">
-          <div>{now.date}</div>
-          <div className="text-ink/50">
-            {now.time} <span className="blink">▪</span> pacific
-          </div>
-        </div>
+    <main style={{ maxWidth: 680, margin: "0 auto", padding: "3rem 1.25rem" }}>
+      <header style={{ marginBottom: "1.75rem" }}>
+        <h1 style={{ fontSize: "1.85rem", fontWeight: 600, margin: 0, letterSpacing: "-0.01em" }}>
+          DARS Upload
+        </h1>
+        <p style={{ color: "var(--muted)", margin: "0.35rem 0 0", fontSize: "0.95rem" }}>
+          Upload your UCLA Degree Audit Report (PDF) to see what's left.
+        </p>
       </header>
 
-      {/* hairline rule under header */}
-      <div className="absolute inset-x-6 top-14 h-px bg-ink/15 sm:inset-x-10" />
-
-      {/* vertical rail */}
-      <aside className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 lg:block">
-        <div className="rotate-180 [writing-mode:vertical-rl] font-mono text-[10px] uppercase tracking-[0.45em] text-ink/40">
-          Transmission Channel · Port 8000 · Verified
+      <section
+        style={{
+          background: "var(--card)",
+          border: "1px solid var(--border)",
+          borderRadius: 10,
+          padding: "1.5rem",
+          boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+        }}
+      >
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDrag(true);
+          }}
+          onDragLeave={() => setDrag(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDrag(false);
+            const f = e.dataTransfer.files?.[0];
+            if (f && (f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"))) {
+              pickFile(f);
+            }
+          }}
+          style={{
+            border: `2px dashed ${drag ? "var(--accent)" : "var(--border)"}`,
+            background: drag ? "var(--accent-soft)" : "transparent",
+            borderRadius: 8,
+            padding: "2rem 1rem",
+            textAlign: "center",
+            transition: "background 0.15s, border-color 0.15s",
+          }}
+        >
+          {file ? (
+            <div>
+              <div style={{ fontWeight: 500 }}>{file.name}</div>
+              <div style={{ color: "var(--muted)", fontSize: "0.85rem", marginTop: "0.2rem" }}>
+                {formatBytes(file.size)}
+              </div>
+              <button
+                type="button"
+                onClick={() => pickFile(null)}
+                style={{
+                  ...btnBase,
+                  marginTop: "0.85rem",
+                  padding: "0.35rem 0.75rem",
+                  fontSize: "0.82rem",
+                  color: "var(--muted)",
+                }}
+              >
+                Remove
+              </button>
+            </div>
+          ) : (
+            <div style={{ color: "var(--muted)" }}>
+              <div style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>
+                Drag a PDF here
+              </div>
+              <div style={{ fontSize: "0.85rem" }}>or use the button below</div>
+            </div>
+          )}
         </div>
-      </aside>
 
-      {/* page */}
-      <div className="mx-auto flex min-h-screen max-w-6xl flex-col justify-between px-6 pb-10 pt-24 sm:px-10">
-        {/* hero */}
-        <section className="fade-up">
-          <p className="font-mono text-[11px] uppercase tracking-[0.32em] text-stamp">
-            §01 &nbsp;·&nbsp; Degree Audit Reporting System
-          </p>
+        <div style={{ display: "flex", gap: "0.6rem", marginTop: "1.25rem" }}>
+          <button type="button" onClick={() => inputRef.current?.click()} style={btnBase}>
+            Choose file
+          </button>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="application/pdf"
+            style={{ display: "none" }}
+            onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
+          />
+          <button
+            type="button"
+            onClick={handleUpload}
+            disabled={!file || status === "uploading"}
+            style={btnPrimary}
+          >
+            {status === "uploading" ? "Uploading…" : "Upload"}
+          </button>
+        </div>
 
-          <h1 className="mt-6 font-display text-[clamp(2.75rem,11vw,9rem)] font-light leading-[0.88] tracking-tight text-ink">
-            <span className="block italic">Degree</span>
-            <span className="block">
-              Audit<span className="text-stamp">.</span>
-              <span className="ml-4 align-middle font-mono text-[0.16em] font-medium uppercase tracking-[0.32em] text-ink/55">
-                — intake
-              </span>
-            </span>
-          </h1>
+        {status === "uploading" && (
+          <div style={{ marginTop: "1.25rem" }}>
+            <div
+              style={{
+                fontSize: "0.82rem",
+                color: "var(--muted)",
+                marginBottom: "0.35rem",
+                display: "flex",
+                justifyContent: "space-between",
+              }}
+            >
+              <span>Uploading…</span>
+              <span>{progress}%</span>
+            </div>
+            <div style={{ height: 6, background: "var(--border)", borderRadius: 999, overflow: "hidden" }}>
+              <div
+                style={{
+                  height: "100%",
+                  width: `${progress}%`,
+                  background: "var(--accent)",
+                  transition: "width 0.15s ease-out",
+                }}
+              />
+            </div>
+          </div>
+        )}
 
-          <p className="mt-7 max-w-xl font-body text-base italic leading-relaxed text-ink/75 sm:text-lg">
-            Hand over your DARS report. We file it, read it, and{" "}
-            <span className="not-italic underline decoration-gold decoration-2 underline-offset-4">
-              tell you what's left.
-            </span>
-          </p>
-        </section>
-
-        {/* drop zone */}
-        <section className="fade-up mt-14" style={{ animationDelay: "120ms" }}>
-          <div
-            className={`relative rounded-[2px] border-[1.5px] ${
-              drag ? "border-stamp" : "border-ink/85"
-            } bg-paper-2/40 px-6 py-10 transition-colors sm:px-12 sm:py-14`}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDrag(true);
-            }}
-            onDragLeave={() => setDrag(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDrag(false);
-              const f = e.dataTransfer.files?.[0];
-              if (f && (f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"))) {
-                pickFile(f);
-              }
+        {status === "done" && msg && (
+          <p
+            style={{
+              marginTop: "1.25rem",
+              padding: "0.65rem 0.85rem",
+              background: "#ecfdf5",
+              border: "1px solid #a7f3d0",
+              borderRadius: 6,
+              color: "var(--success)",
+              fontSize: "0.9rem",
             }}
           >
-            {/* registration brackets */}
-            <span className="absolute -top-[3px] -left-[3px] h-3 w-3 border-t-2 border-l-2 border-stamp" />
-            <span className="absolute -top-[3px] -right-[3px] h-3 w-3 border-t-2 border-r-2 border-stamp" />
-            <span className="absolute -bottom-[3px] -left-[3px] h-3 w-3 border-b-2 border-l-2 border-stamp" />
-            <span className="absolute -bottom-[3px] -right-[3px] h-3 w-3 border-b-2 border-r-2 border-stamp" />
+            ✓ {msg}
+          </p>
+        )}
+        {status === "error" && (
+          <p
+            style={{
+              marginTop: "1.25rem",
+              padding: "0.65rem 0.85rem",
+              background: "#fef2f2",
+              border: "1px solid #fecaca",
+              borderRadius: 6,
+              color: "var(--error)",
+              fontSize: "0.9rem",
+            }}
+          >
+            ✕ {msg}
+          </p>
+        )}
+      </section>
 
-            <div className="grid items-end gap-10 md:grid-cols-[1fr_auto]">
-              <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-ink/55">
-                  Receptacle · PDF only
-                </p>
-                <h2 className="mt-3 font-display text-3xl leading-[1.05] sm:text-4xl">
-                  {file ? "On the desk:" : "Drop your DARS report here."}
-                </h2>
-
-                {file ? (
-                  <div className="mt-4 flex flex-wrap items-baseline gap-x-4 gap-y-1 font-mono text-sm">
-                    <span className="text-ink">{file.name}</span>
-                    <span className="text-ink/55">{formatBytes(file.size)}</span>
-                    <button
-                      type="button"
-                      onClick={() => pickFile(null)}
-                      className="text-stamp underline underline-offset-4 hover:text-stamp-deep"
-                    >
-                      remove
-                    </button>
-                  </div>
-                ) : (
-                  <p className="mt-3 max-w-md font-body italic text-ink/65">
-                    Drag the file in, or click below. Only PDFs are accepted by the desk clerk.
-                  </p>
-                )}
-
-                <div className="mt-7 flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => inputRef.current?.click()}
-                    className="group inline-flex items-center gap-2 border border-ink bg-paper px-5 py-2.5 font-mono text-xs uppercase tracking-[0.22em] text-ink transition-colors hover:bg-ink hover:text-paper"
-                  >
-                    <span>Select file</span>
-                    <span className="transition-transform group-hover:translate-x-1">→</span>
-                  </button>
-
-                  <input
-                    ref={inputRef}
-                    type="file"
-                    accept="application/pdf"
-                    className="hidden"
-                    onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
-                  />
-
-                  <button
-                    type="button"
-                    onClick={handleUpload}
-                    disabled={!file || status === "uploading"}
-                    className="inline-flex items-center gap-2 bg-ink px-5 py-2.5 font-mono text-xs uppercase tracking-[0.22em] text-paper transition-colors hover:bg-stamp disabled:cursor-not-allowed disabled:bg-ink/25"
-                  >
-                    <span>{status === "uploading" ? "Transmitting…" : "Transmit"}</span>
-                    <span aria-hidden>▣</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* progress bar */}
-              {status === "uploading" && (
-                <div className="md:col-span-2">
-                  <div className="mb-1.5 flex items-baseline justify-between font-mono text-[10px] uppercase tracking-[0.28em] text-ink/65">
-                    <span className="truncate pr-3">Transmitting · {file?.name}</span>
-                    <span className="text-stamp">{progress}%</span>
-                  </div>
-                  <div className="h-[3px] w-full overflow-hidden bg-ink/15">
-                    <div
-                      className="h-full bg-stamp transition-[width] duration-150 ease-out"
-                      style={{ width: `${progress}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* oversized serial */}
-              <div className="hidden text-right md:block">
-                <div className="font-display text-[8rem] leading-none text-ink/10">
-                  {String(file ? 1 : 0).padStart(2, "0")}
-                </div>
-                <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.32em] text-ink/45">
-                  files queued
-                </div>
-              </div>
-            </div>
-
-            {/* RECEIVED stamp */}
-            {status === "done" && (
-              <div
-                key={file?.name ?? "stamped"}
-                className="stamp-slam pointer-events-none absolute right-4 top-4 select-none sm:right-8 sm:top-8"
-              >
-                <div className="border-[3px] border-stamp px-5 py-2 text-stamp">
-                  <div className="font-display text-3xl font-semibold leading-none tracking-[0.06em]">
-                    RECEIVED
-                  </div>
-                  <div className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.25em]">
-                    {now.date} · {now.time}
-                  </div>
-                  <div className="max-w-[14rem] truncate font-mono text-[10px] uppercase tracking-[0.2em] opacity-80">
-                    {file?.name}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* inline pdf preview */}
-            {file && previewUrl && (
-              <div className="mt-8 border-t border-ink/15 pt-5">
-                <div className="mb-3 flex items-baseline justify-between gap-3">
-                  <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-ink/55">
-                    Preview ·{" "}
-                    <span className="text-ink">{file.name}</span>{" "}
-                    <span className="text-ink/45">({formatBytes(file.size)})</span>
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setShowPreview((v) => !v)}
-                    className="font-mono text-[10px] uppercase tracking-[0.28em] text-stamp underline-offset-4 hover:underline"
-                  >
-                    {showPreview ? "[ hide ]" : "[ show ]"}
-                  </button>
-                </div>
-                {showPreview && (
-                  <div className="border border-ink/30 bg-paper">
-                    <embed
-                      src={previewUrl}
-                      type="application/pdf"
-                      className="block h-[28rem] w-full sm:h-[34rem]"
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ledger / error line */}
-            {status === "done" && msg && (
-              <p className="mt-7 border-t border-ink/15 pt-4 font-mono text-xs uppercase tracking-[0.22em] text-ink/65">
-                ↳ ledger says: <span className="text-ink">{msg}</span>
-              </p>
-            )}
-            {status === "error" && (
-              <p className="mt-7 border-t border-stamp/30 pt-4 font-mono text-xs uppercase tracking-[0.2em] text-stamp">
-                ▲ transmission failed — {msg}
-              </p>
-            )}
+      {file && previewUrl && (
+        <section style={{ marginTop: "1.5rem" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: "0.6rem",
+            }}
+          >
+            <h2 style={{ fontSize: "0.95rem", fontWeight: 600, margin: 0 }}>Preview</h2>
+            <button
+              type="button"
+              onClick={() => setShowPreview((v) => !v)}
+              style={{ ...btnBase, padding: "0.35rem 0.75rem", fontSize: "0.82rem" }}
+            >
+              {showPreview ? "Hide" : "Show"}
+            </button>
           </div>
+          {showPreview && (
+            <embed
+              src={previewUrl}
+              type="application/pdf"
+              style={{
+                width: "100%",
+                height: "32rem",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                background: "var(--card)",
+              }}
+            />
+          )}
         </section>
-
-        {/* footer metadata strip */}
-        <footer
-          className="fade-up mt-14 border-t border-ink/15 pt-4"
-          style={{ animationDelay: "240ms" }}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-y-2 font-mono text-[10px] uppercase tracking-[0.3em] text-ink/55">
-            <span>Channel · :8000 / upload</span>
-            <span className="hidden sm:inline">UCLA · Registrar's Bureau · Unofficial</span>
-            <span>For Internal Use ▢ ▢ ▢</span>
-          </div>
-        </footer>
-      </div>
+      )}
     </main>
   );
 }
