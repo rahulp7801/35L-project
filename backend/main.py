@@ -1,6 +1,8 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 
+from parser import parse_pdf
+
 app = FastAPI()
 
 # our next.js frontend runs on port 3000, this server runs on 8000
@@ -24,5 +26,11 @@ async def upload(file: UploadFile = File(...)):
     with open(f"uploaded_dars/{file.filename}", "wb") as f:
         f.write(contents)
 
-    # send a confirmation back so the frontend can show "saved ___"
-    return {"message": f"saved {file.filename}"}
+    # parse the pdf in-memory so the frontend can render the dashboard
+    parsed = parse_pdf(contents)
+
+    return {
+        "message": f"saved {file.filename}",
+        "filename": file.filename,
+        **parsed,
+    }
