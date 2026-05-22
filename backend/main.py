@@ -1,5 +1,7 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+
+from parser import parse_pdf
 
 app = FastAPI()
 
@@ -12,17 +14,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# this endpoint runs whenever the frontend posts a file to /upload
-@app.post("/upload")
-async def upload(file: UploadFile = File(...)):
 
-    # read the raw bytes of whatever pdf the user picked
+MAX_BYTES = 10 * 1024 * 1024
+
+
+@app.post("/parse")
+async def parse(file: UploadFile = File(...)):
+    if file.content_type != "application/pdf" and not (file.filename or "").lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="only PDF files are allowed")
     contents = await file.read()
-
-    # save it inside the uploaded_dars folder using the original filename
-    # "wb" = write binary (pdfs arent plain text)
-    with open(f"uploaded_dars/{file.filename}", "wb") as f:
-        f.write(contents)
-
-    # send a confirmation back so the frontend can show "saved ___"
-    return {"message": f"saved {file.filename}"}
+    if len(contents) > MAX_BYTES:
+        raise HTTPException(status_code=413, detail="file exceeds 10 MB limit")
+    try:
+        return parse_pdf(contents)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"could not parse pdf: {e}")
