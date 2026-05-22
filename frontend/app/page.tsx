@@ -15,8 +15,8 @@ import {
 } from "firebase/firestore";
 
 type Course = { term: string; code: string; units: number; grade: string; title: string };
-type Need = { section: string; needs_raw: string };
-type Parsed = { completed: Course[]; in_progress: Course[]; remaining: Need[] };
+type Remaining = { section: string; needs_raw: string; eligible?: string };
+type Parsed = { completed: Course[]; in_progress: Course[]; remaining: Remaining[] };
 
 type Upload = {
   id: string;
@@ -164,6 +164,8 @@ export default function Home() {
   }
 
   if (loading || !user) return null;
+
+  const latest = uploads[0];
 
   return (
     <main style={{ maxWidth: 680, margin: "0 auto", padding: "3rem 1.25rem" }}>
@@ -358,6 +360,24 @@ export default function Home() {
         )}
       </section>
 
+      {latest && latest.parsed && (
+        <section style={{ marginTop: "1.5rem", display: "grid", gap: "1.25rem" }}>
+          <CourseCard
+            title="Completed"
+            count={latest.parsed.completed.length}
+            accent="var(--success)"
+            courses={latest.parsed.completed}
+          />
+          <CourseCard
+            title="In progress"
+            count={latest.parsed.in_progress.length}
+            accent="var(--accent)"
+            courses={latest.parsed.in_progress}
+          />
+          <RemainingCard remaining={latest.parsed.remaining} />
+        </section>
+      )}
+
       {uploads.length > 0 && (
         <section style={{ marginTop: "1.5rem" }}>
           <h2 style={{ fontSize: "0.95rem", fontWeight: 600, margin: "0 0 0.6rem" }}>Your uploads</h2>
@@ -424,5 +444,145 @@ export default function Home() {
         </section>
       )}
     </main>
+  );
+}
+
+const cardStyle: React.CSSProperties = {
+  background: "var(--card)",
+  border: "1px solid var(--border)",
+  borderRadius: 10,
+  padding: "1.25rem 1.5rem",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+};
+
+function CardHeader({ title, count, accent }: { title: string; count: number; accent: string }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "baseline",
+        justifyContent: "space-between",
+        marginBottom: "0.85rem",
+        paddingBottom: "0.6rem",
+        borderBottom: "1px solid var(--border)",
+      }}
+    >
+      <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: 0 }}>{title}</h2>
+      <span
+        style={{
+          fontSize: "0.78rem",
+          fontWeight: 600,
+          color: accent,
+          background: "var(--accent-soft)",
+          padding: "0.15rem 0.55rem",
+          borderRadius: 999,
+        }}
+      >
+        {count}
+      </span>
+    </div>
+  );
+}
+
+function CourseCard({
+  title,
+  count,
+  accent,
+  courses,
+}: {
+  title: string;
+  count: number;
+  accent: string;
+  courses: Course[];
+}) {
+  return (
+    <div style={cardStyle}>
+      <CardHeader title={title} count={count} accent={accent} />
+      {courses.length === 0 ? (
+        <p style={{ color: "var(--muted)", fontSize: "0.9rem", margin: 0 }}>Nothing here yet.</p>
+      ) : (
+        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "0.5rem" }}>
+          {courses.map((c, i) => (
+            <li
+              key={`${c.term}-${c.code}-${i}`}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: "0.75rem",
+                fontSize: "0.9rem",
+              }}
+            >
+              <span style={{ minWidth: 0, flex: 1 }}>
+                <span style={{ color: "var(--muted)", marginRight: "0.4rem" }}>{c.term}</span>
+                <span style={{ fontWeight: 500 }}>{c.code}</span>
+                <span style={{ color: "var(--muted)", marginLeft: "0.5rem" }}>{c.title}</span>
+              </span>
+              <span
+                style={{
+                  flexShrink: 0,
+                  fontWeight: 600,
+                  color: accent,
+                  fontSize: "0.85rem",
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                {c.grade}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function RemainingCard({ remaining }: { remaining: Remaining[] }) {
+  return (
+    <div style={cardStyle}>
+      <CardHeader title="Outstanding" count={remaining.length} accent="var(--error)" />
+      {remaining.length === 0 ? (
+        <p style={{ color: "var(--muted)", fontSize: "0.9rem", margin: 0 }}>All requirements satisfied.</p>
+      ) : (
+        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "0.85rem" }}>
+          {remaining.map((r, i) => (
+            <li
+              key={i}
+              style={{
+                padding: "0.75rem 0.85rem",
+                background: "var(--accent-soft)",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+              }}
+            >
+              <p style={{ margin: 0, fontWeight: 600, fontSize: "0.92rem" }}>{r.section}</p>
+              <p
+                style={{
+                  margin: "0.3rem 0 0",
+                  fontSize: "0.8rem",
+                  color: "var(--error)",
+                  fontWeight: 500,
+                }}
+              >
+                Needs · {r.needs_raw}
+              </p>
+              {r.eligible && (
+                <p
+                  style={{
+                    margin: "0.45rem 0 0",
+                    fontSize: "0.82rem",
+                    color: "var(--muted)",
+                    lineHeight: 1.45,
+                    fontFamily: "ui-monospace, 'SF Mono', Menlo, monospace",
+                  }}
+                >
+                  <span style={{ color: "var(--text)", fontWeight: 500 }}>From: </span>
+                  {r.eligible}
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

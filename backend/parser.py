@@ -37,6 +37,8 @@ _COURSE = re.compile(
 )
 
 _NEEDS = re.compile(r"^NEEDS:\s*(.+)$")
+_SELECT = re.compile(r"^SELECT FROM:\s*(.*)$")
+_NOT_FROM = re.compile(r"^->\s*NOT FROM:")
 
 # Font signature for DARS section titles: bold face at >=11pt.
 _TITLE_MIN_SIZE = 11.0
@@ -107,12 +109,52 @@ def _parse_courses(lines: list[dict]) -> tuple[list[dict], list[dict]]:
     return completed, in_progress
 
 
+def _collect_select_from(lines: list[dict], start_idx: int) -> str:
+    """After a NEEDS line, find the next SELECT FROM line and join its body
+    with any wrapped continuation lines. Stops at the next requirement,
+    a course-history row, or a sub-heading.
+
+    Returns "" when there's no SELECT FROM before the next requirement
+    (e.g. GPA-only or unit-total NEEDS lines)."""
+    i = start_idx + 1
+    while i < len(lines):
+        text = lines[i]["text"]
+        if lines[i]["is_title"] or _NEEDS.match(text):
+            return ""
+        m = _SELECT.match(text)
+        if not m:
+            i += 1
+            continue
+        parts = [m.group(1).strip()] if m.group(1).strip() else []
+        j = i + 1
+        while j < len(lines):
+            nxt = lines[j]
+            if nxt["is_title"]:
+                break
+            t = nxt["text"]
+            if _NEEDS.match(t) or _SELECT.match(t) or _NOT_FROM.match(t):
+                break
+            # a course-history row means we've crossed into a new sub-block.
+            if _COURSE.match(t):
+                break
+            # a non-bold sub-heading like "SEVEN COMPUTER SCIENCE REQUIRED COURSES"
+            # (all-uppercase words, no digits) also marks a new sub-block.
+            letters = [c for c in t if c.isalpha()]
+            if letters and all(c.isupper() for c in letters) and not any(c.isdigit() for c in t):
+                break
+            parts.append(t.strip())
+            j += 1
+        return " ".join(parts)
+    return ""
+
+
 def _parse_remaining(lines: list[dict]) -> list[dict]:
-    """Each NEEDS line becomes one entry and the section is the most recent title above it."""
+    """Each NEEDS line becomes one entry. Section = most recent title above;
+    eligible = the SELECT FROM body that follows."""
     out: list[dict] = []
     section = ""
     prev_was_title = False
-    for ln in lines:
+    for i, ln in enumerate(lines):
         if ln["is_title"]:
             section = f"{section} {ln['text']}" if prev_was_title and section else ln["text"]
             prev_was_title = True
@@ -120,7 +162,11 @@ def _parse_remaining(lines: list[dict]) -> list[dict]:
         prev_was_title = False
         m = _NEEDS.match(ln["text"])
         if m:
-            out.append({"section": section or "(unknown)", "needs_raw": m.group(1).strip()})
+            out.append({
+                "section": section or "(unknown)",
+                "needs_raw": m.group(1).strip(),
+                "eligible": _collect_select_from(lines, i),
+            })
     return out
 
 
