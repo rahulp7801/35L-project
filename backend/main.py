@@ -14,7 +14,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 MAX_BYTES = 10 * 1024 * 1024
 
 
