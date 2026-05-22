@@ -7,6 +7,8 @@ import { db } from "../lib/firebase";
 import {
   addDoc,
   collection,
+  deleteDoc,
+  doc,
   onSnapshot,
   orderBy,
   query,
@@ -36,13 +38,6 @@ function formatBytes(b: number) {
   return `${(b / 1024 / 1024).toFixed(2)} MB`;
 }
 
-function validatePdf(f: File): string | null {
-  const isPdf = f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf");
-  if (!isPdf) return "Only PDF files are allowed.";
-  if (f.size > MAX_BYTES) return `File is ${formatBytes(f.size)} — max 10 MB.`;
-  return null;
-}
-
 const btnBase: React.CSSProperties = {
   padding: "0.55rem 1rem",
   borderRadius: 6,
@@ -70,7 +65,6 @@ export default function Home() {
   const [drag, setDrag] = useState(false);
   const [progress, setProgress] = useState(0);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [showPreview, setShowPreview] = useState(true);
   const [uploads, setUploads] = useState<Upload[]>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -112,24 +106,48 @@ export default function Home() {
     };
   }, [file]);
 
+  useEffect(() => {
+    if (!file) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && status !== "uploading") pickFile(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [file, status]);
+
   function pickFile(f: File | null) {
     setProgress(0);
+    setFile(null);
     if (!f) {
-      setFile(null);
       setStatus("idle");
       setMsg("");
       return;
     }
-    const err = validatePdf(f);
-    if (err) {
-      setFile(null);
+    const isPdf = f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf");
+    if (!isPdf) {
       setStatus("error");
-      setMsg(err);
+      setMsg("Only PDF files are allowed.");
+      return;
+    }
+    if (f.size > MAX_BYTES) {
+      setStatus("error");
+      setMsg(`File is ${formatBytes(f.size)} — max 10 MB.`);
       return;
     }
     setFile(f);
     setStatus("idle");
     setMsg("");
+  }
+
+  async function handleDelete(uploadId: string, filename: string) {
+    if (!user) return;
+    if (!confirm(`Delete "${filename}"? This can't be undone.`)) return;
+    try {
+      await deleteDoc(doc(db, "users", user.uid, "uploads", uploadId));
+    } catch (e) {
+      setStatus("error");
+      setMsg(e instanceof Error ? e.message : "delete failed");
+    }
   }
 
   async function handleUpload() {
@@ -157,6 +175,7 @@ export default function Home() {
       });
       setMsg(`saved ${file.name}`);
       setStatus("done");
+      setFile(null);
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "upload failed");
       setStatus("error");
@@ -230,6 +249,7 @@ export default function Home() {
         }}
       >
         <div
+          onClick={() => inputRef.current?.click()}
           onDragOver={(e) => {
             e.preventDefault();
             setDrag(true);
@@ -248,85 +268,26 @@ export default function Home() {
             padding: "2rem 1rem",
             textAlign: "center",
             transition: "background 0.15s, border-color 0.15s",
+            cursor: "pointer",
+            color: "var(--muted)",
           }}
         >
-          {file ? (
-            <div>
-              <div style={{ fontWeight: 500 }}>{file.name}</div>
-              <div style={{ color: "var(--muted)", fontSize: "0.85rem", marginTop: "0.2rem" }}>
-                {formatBytes(file.size)}
-              </div>
-              <button
-                type="button"
-                onClick={() => pickFile(null)}
-                style={{
-                  ...btnBase,
-                  marginTop: "0.85rem",
-                  padding: "0.35rem 0.75rem",
-                  fontSize: "0.82rem",
-                  color: "var(--muted)",
-                }}
-              >
-                Remove
-              </button>
-            </div>
-          ) : (
-            <div style={{ color: "var(--muted)" }}>
-              <div style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>
-                Drag a PDF here
-              </div>
-              <div style={{ fontSize: "0.85rem" }}>or use the button below · PDF only, max 10 MB</div>
-            </div>
-          )}
-        </div>
-
-        <div style={{ display: "flex", gap: "0.6rem", marginTop: "1.25rem" }}>
-          <button type="button" onClick={() => inputRef.current?.click()} style={btnBase}>
-            Choose file
-          </button>
-          <input
-            ref={inputRef}
-            type="file"
-            accept="application/pdf"
-            style={{ display: "none" }}
-            onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
-          />
-          <button
-            type="button"
-            onClick={handleUpload}
-            disabled={!file || status === "uploading"}
-            style={btnPrimary}
-          >
-            {status === "uploading" ? "Uploading…" : "Upload"}
-          </button>
-        </div>
-
-        {status === "uploading" && (
-          <div style={{ marginTop: "1.25rem" }}>
-            <div
-              style={{
-                fontSize: "0.82rem",
-                color: "var(--muted)",
-                marginBottom: "0.35rem",
-                display: "flex",
-                justifyContent: "space-between",
-              }}
-            >
-              <span>Uploading…</span>
-              <span>{progress}%</span>
-            </div>
-            <div style={{ height: 6, background: "var(--border)", borderRadius: 999, overflow: "hidden" }}>
-              <div
-                style={{
-                  height: "100%",
-                  width: `${progress}%`,
-                  background: "var(--accent)",
-                  transition: "width 0.15s ease-out",
-                }}
-              />
-            </div>
+          <div style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>
+            Drag a PDF here or click to browse
           </div>
-        )}
+          <div style={{ fontSize: "0.85rem" }}>PDF only, max 10 MB</div>
+        </div>
+
+        <input
+          ref={inputRef}
+          type="file"
+          accept="application/pdf"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            pickFile(e.target.files?.[0] ?? null);
+            e.target.value = "";
+          }}
+        />
 
         {status === "done" && msg && (
           <p
@@ -343,7 +304,7 @@ export default function Home() {
             ✓ {msg}
           </p>
         )}
-        {status === "error" && (
+        {status === "error" && !file && (
           <p
             style={{
               marginTop: "1.25rem",
@@ -390,19 +351,38 @@ export default function Home() {
                   background: "var(--card)",
                   border: "1px solid var(--border)",
                   borderRadius: 8,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  gap: "0.75rem",
                 }}
               >
-                <div style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {u.filename}
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {u.filename}
+                  </div>
+                  <div style={{ fontSize: "0.78rem", color: "var(--muted)", marginTop: "0.15rem" }}>
+                    {u.uploadedAt && u.uploadedAt.toDate().toLocaleString()}
+                  </div>
+                  <div style={{ fontSize: "0.82rem", marginTop: "0.4rem", display: "flex", gap: "0.85rem", flexWrap: "wrap" }}>
+                    <span><strong>{u.parsed.completed.length}</strong> completed</span>
+                    <span><strong>{u.parsed.in_progress.length}</strong> in progress</span>
+                    <span><strong>{u.parsed.remaining.length}</strong> remaining</span>
+                  </div>
                 </div>
-                <div style={{ fontSize: "0.78rem", color: "var(--muted)", marginTop: "0.15rem" }}>
-                  {u.uploadedAt && u.uploadedAt.toDate().toLocaleString()}
-                </div>
-                <div style={{ fontSize: "0.82rem", marginTop: "0.4rem", display: "flex", gap: "0.85rem", flexWrap: "wrap" }}>
-                  <span><strong>{u.parsed?.completed?.length ?? 0}</strong> completed</span>
-                  <span><strong>{u.parsed?.in_progress?.length ?? 0}</strong> in progress</span>
-                  <span><strong>{u.parsed?.remaining?.length ?? 0}</strong> remaining</span>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(u.id, u.filename)}
+                  style={{
+                    ...btnBase,
+                    padding: "0.3rem 0.6rem",
+                    fontSize: "0.78rem",
+                    color: "var(--error)",
+                    flexShrink: 0,
+                  }}
+                >
+                  Delete
+                </button>
               </li>
             ))}
           </ul>
@@ -410,38 +390,92 @@ export default function Home() {
       )}
 
       {file && previewUrl && (
-        <section style={{ marginTop: "1.5rem" }}>
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => {
+            if (status !== "uploading") pickFile(null);
+          }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1.5rem",
+            zIndex: 50,
+          }}
+        >
           <div
+            onClick={(e) => e.stopPropagation()}
             style={{
+              background: "var(--card)",
+              borderRadius: 12,
+              boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+              width: "100%",
+              maxWidth: 760,
+              maxHeight: "90vh",
               display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: "0.6rem",
+              flexDirection: "column",
+              overflow: "hidden",
             }}
           >
-            <h2 style={{ fontSize: "0.95rem", fontWeight: 600, margin: 0 }}>Preview</h2>
-            <button
-              type="button"
-              onClick={() => setShowPreview((v) => !v)}
-              style={{ ...btnBase, padding: "0.35rem 0.75rem", fontSize: "0.82rem" }}
-            >
-              {showPreview ? "Hide" : "Show"}
-            </button>
-          </div>
-          {showPreview && (
+            <header style={{ padding: "1rem 1.25rem", borderBottom: "1px solid var(--border)" }}>
+              <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {file.name}
+              </div>
+              <div style={{ fontSize: "0.8rem", color: "var(--muted)", marginTop: "0.15rem" }}>
+                {formatBytes(file.size)}
+              </div>
+            </header>
+
             <embed
               src={previewUrl}
               type="application/pdf"
-              style={{
-                width: "100%",
-                height: "32rem",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                background: "var(--card)",
-              }}
+              style={{ flex: 1, width: "100%", minHeight: "50vh", background: "var(--bg)" }}
             />
-          )}
-        </section>
+
+            <footer style={{ padding: "1rem 1.25rem", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              {status === "error" && msg && (
+                <p style={{ margin: 0, padding: "0.55rem 0.75rem", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, color: "var(--error)", fontSize: "0.85rem" }}>
+                  ✕ {msg}
+                </p>
+              )}
+
+              {status === "uploading" && (
+                <div>
+                  <div style={{ fontSize: "0.82rem", color: "var(--muted)", marginBottom: "0.35rem", display: "flex", justifyContent: "space-between" }}>
+                    <span>Uploading…</span>
+                    <span>{progress}%</span>
+                  </div>
+                  <div style={{ height: 6, background: "var(--border)", borderRadius: 999, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${progress}%`, background: "var(--accent)", transition: "width 0.15s ease-out" }} />
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.6rem" }}>
+                <button
+                  type="button"
+                  onClick={() => pickFile(null)}
+                  disabled={status === "uploading"}
+                  style={btnBase}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleUpload}
+                  disabled={status === "uploading"}
+                  style={btnPrimary}
+                >
+                  {status === "uploading" ? "Uploading…" : status === "error" ? "Retry upload" : "Upload"}
+                </button>
+              </div>
+            </footer>
+          </div>
+        </div>
       )}
     </main>
   );

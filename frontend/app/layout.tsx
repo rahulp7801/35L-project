@@ -25,7 +25,7 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: " UCLA DARS Intake",
-  description: "Hand over your DARS report. We tell you what's left.",
+  description: "Give us your DARS report and We tell you what's left.",
 };
 
 export default function RootLayout({
