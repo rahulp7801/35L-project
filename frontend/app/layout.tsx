@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Fraunces, Newsreader, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { AuthProvider } from "../lib/auth";
 
 const fraunces = Fraunces({
   variable: "--font-fraunces",
@@ -23,8 +24,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Bureau of Audits — UCLA DARS Intake",
-  description: "Hand over your DARS report. We file it, read it, and tell you what's left.",
+  title: " UCLA DARS Intake",
+  description: "Hand over your DARS report. We tell you what's left.",
 };
 
 export default function RootLayout({
@@ -37,7 +38,9 @@ export default function RootLayout({
       lang="en"
       className={`${fraunces.variable} ${newsreader.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full font-body">{children}</body>
+      <body className="min-h-full font-body">
+        <AuthProvider>{children}</AuthProvider>
+      </body>
     </html>
   );
 }
