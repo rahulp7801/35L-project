@@ -17,8 +17,22 @@ import {
 } from "firebase/firestore";
 
 type Course = { term: string; code: string; units: number; grade: string; title: string };
-type Remaining = { section: string; needs_raw: string; eligible?: string };
-type Parsed = { completed: Course[]; in_progress: Course[]; remaining: Remaining[] };
+type Needs = { units?: number; courses?: number; sub_groups?: number; gpa?: number };
+type Remaining = { section: string; needs_raw: string; needs?: Needs; eligible?: string };
+type SectionNeed = { needs_raw: string; needs: Needs; eligible?: string };
+type Section = {
+  title: string;
+  status: "fulfilled" | "in_progress" | "unfulfilled";
+  needs: SectionNeed[];
+  completed: Course[];
+  in_progress: Course[];
+};
+type Parsed = {
+  completed: Course[];
+  in_progress: Course[];
+  remaining: Remaining[];
+  sections?: Section[];
+};
 
 type Upload = {
   id: string;
@@ -323,6 +337,9 @@ export default function Home() {
 
       {latest && latest.parsed && (
         <section style={{ marginTop: "1.5rem", display: "grid", gap: "1.25rem" }}>
+          {latest.parsed.sections && latest.parsed.sections.length > 0 && (
+            <ProgressCard sections={latest.parsed.sections} />
+          )}
           <CourseCard
             title="Completed"
             count={latest.parsed.completed.length}
@@ -335,7 +352,13 @@ export default function Home() {
             accent="var(--accent)"
             courses={latest.parsed.in_progress}
           />
-          <RemainingCard remaining={latest.parsed.remaining} />
+          {latest.parsed.sections && latest.parsed.sections.length > 0 ? (
+            <OutstandingCard
+              sections={latest.parsed.sections.filter((s) => s.status === "unfulfilled")}
+            />
+          ) : (
+            <RemainingCard remaining={latest.parsed.remaining} />
+          )}
         </section>
       )}
 
@@ -564,6 +587,202 @@ function CourseCard({
               </span>
             </li>
           ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function ProgressCard({ sections }: { sections: Section[] }) {
+  const total = sections.length;
+  const fulfilled = sections.filter((s) => s.status === "fulfilled").length;
+  const inProgress = sections.filter((s) => s.status === "in_progress").length;
+  const unfulfilled = sections.filter((s) => s.status === "unfulfilled").length;
+  const pctFulfilled = total ? (fulfilled / total) * 100 : 0;
+  const pctInProgress = total ? (inProgress / total) * 100 : 0;
+
+  let unitsLeft = 0;
+  let coursesLeft = 0;
+  for (const s of sections) {
+    if (s.status !== "unfulfilled") continue;
+    for (const n of s.needs) {
+      if (n.needs.units) unitsLeft += n.needs.units;
+      if (n.needs.courses) coursesLeft += n.needs.courses;
+    }
+  }
+
+  return (
+    <div style={cardStyle}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          marginBottom: "0.85rem",
+          paddingBottom: "0.6rem",
+          borderBottom: "1px solid var(--border)",
+        }}
+      >
+        <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: 0 }}>Progress</h2>
+        <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text)" }}>
+          {pctFulfilled.toFixed(0)}% fulfilled
+        </span>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          height: 10,
+          background: "var(--border)",
+          borderRadius: 999,
+          overflow: "hidden",
+          marginBottom: "0.7rem",
+        }}
+      >
+        <div style={{ width: `${pctFulfilled}%`, background: "var(--success)" }} />
+        <div style={{ width: `${pctInProgress}%`, background: "var(--accent)" }} />
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          gap: "1.25rem",
+          flexWrap: "wrap",
+          fontSize: "0.85rem",
+          color: "var(--muted)",
+        }}
+      >
+        <span>
+          <strong style={{ color: "var(--success)" }}>{fulfilled}</strong> fulfilled
+        </span>
+        <span>
+          <strong style={{ color: "var(--accent)" }}>{inProgress}</strong> in progress
+        </span>
+        <span>
+          <strong style={{ color: "var(--error)" }}>{unfulfilled}</strong> unfulfilled
+        </span>
+        <span style={{ marginLeft: "auto" }}>
+          {total} requirement{total === 1 ? "" : "s"}
+        </span>
+      </div>
+
+      {(coursesLeft > 0 || unitsLeft > 0) && (
+        <div
+          style={{
+            marginTop: "0.85rem",
+            paddingTop: "0.7rem",
+            borderTop: "1px dashed var(--border)",
+            display: "flex",
+            gap: "0.5rem",
+            flexWrap: "wrap",
+          }}
+        >
+          {coursesLeft > 0 && (
+            <Chip label={`${coursesLeft} course${coursesLeft === 1 ? "" : "s"} to go`} />
+          )}
+          {unitsLeft > 0 && <Chip label={`${unitsLeft.toFixed(1)} units to go`} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Chip({ label }: { label: string }) {
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "0.2rem 0.6rem",
+        background: "var(--accent-soft)",
+        border: "1px solid var(--border)",
+        borderRadius: 999,
+        fontSize: "0.78rem",
+        fontWeight: 500,
+        color: "var(--text)",
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+function describeNeed(n: Needs): string[] {
+  const out: string[] = [];
+  if (n.courses) out.push(`${n.courses} course${n.courses === 1 ? "" : "s"}`);
+  if (n.units) out.push(`${n.units.toFixed(1)} units`);
+  if (n.sub_groups) out.push(`${n.sub_groups} sub-group${n.sub_groups === 1 ? "" : "s"}`);
+  if (n.gpa) out.push(`${n.gpa.toFixed(3)} GPA`);
+  return out;
+}
+
+function OutstandingCard({ sections }: { sections: Section[] }) {
+  return (
+    <div style={cardStyle}>
+      <CardHeader title="Outstanding" count={sections.length} accent="var(--error)" />
+      {sections.length === 0 ? (
+        <p style={{ color: "var(--muted)", fontSize: "0.9rem", margin: 0 }}>
+          All requirements satisfied.
+        </p>
+      ) : (
+        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "0.85rem" }}>
+          {sections.map((s, i) => {
+            // Aggregate chips across all NEEDS lines in this section so the user
+            // sees "2 courses · 8.0 units" instead of three separate lines.
+            const totals: Needs = {};
+            for (const n of s.needs) {
+              if (n.needs.courses) totals.courses = (totals.courses ?? 0) + n.needs.courses;
+              if (n.needs.units) totals.units = (totals.units ?? 0) + n.needs.units;
+              if (n.needs.sub_groups)
+                totals.sub_groups = (totals.sub_groups ?? 0) + n.needs.sub_groups;
+              if (n.needs.gpa) totals.gpa = n.needs.gpa;
+            }
+            const chips = describeNeed(totals);
+            const eligible = s.needs
+              .map((n) => n.eligible)
+              .filter(Boolean)
+              .join(" / ");
+            return (
+              <li
+                key={i}
+                style={{
+                  padding: "0.75rem 0.85rem",
+                  background: "var(--accent-soft)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                }}
+              >
+                <p style={{ margin: 0, fontWeight: 600, fontSize: "0.92rem" }}>{s.title}</p>
+                {chips.length > 0 && (
+                  <div
+                    style={{
+                      marginTop: "0.45rem",
+                      display: "flex",
+                      gap: "0.4rem",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    {chips.map((c, j) => (
+                      <Chip key={j} label={`Need ${c}`} />
+                    ))}
+                  </div>
+                )}
+                {eligible && (
+                  <p
+                    style={{
+                      margin: "0.5rem 0 0",
+                      fontSize: "0.82rem",
+                      color: "var(--muted)",
+                      lineHeight: 1.45,
+                      fontFamily: "ui-monospace, 'SF Mono', Menlo, monospace",
+                    }}
+                  >
+                    <span style={{ color: "var(--text)", fontWeight: 500 }}>From: </span>
+                    {eligible}
+                  </p>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

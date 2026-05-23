@@ -3,12 +3,13 @@
 Returns a dict with the following:
     completed: list of {term, code, units, grade, title} courses the student has taken
     in_progress: list of {term, code, units, grade, title} courses currently in progress
-    remaining: list of {section, needs_raw} unfulfilled requirements, one per "NEEDS:" line
+    remaining: list of {section, needs_raw, needs, eligible} unfulfilled requirements, one per "NEEDS:" line
+    sections: list of {title, status, needs, completed, in_progress} per requirement category, used by the dashboard to compute fulfilled/unfulfilled percentages.
 
 Method:
-    pdfplumber gives us each word with its font + size. 
-    DARS uses bold-11pt for section headings and regular-9pt for body text, so we identify titles by the boldness and size. 
-    Much more robust than guessing with regex. 
+    pdfplumber gives us each word with its font + size.
+    DARS uses bold-11pt for section headings and regular-9pt for body text, so we identify titles by the boldness and size.
+    Much more robust than guessing with regex.
     Inside each section we use regex for the formatted course-history rows and "NEEDS:" lines.
 """
 
@@ -39,6 +40,26 @@ _COURSE = re.compile(
 _NEEDS = re.compile(r"^NEEDS:\s*(.+)$")
 _SELECT = re.compile(r"^SELECT FROM:\s*(.*)$")
 _NOT_FROM = re.compile(r"^->\s*NOT FROM:")
+
+# Pieces inside a NEEDS line.
+_NEEDS_UNITS = re.compile(r"(\d+(?:\.\d+)?)\s+UNITS?\b")
+_NEEDS_COURSES = re.compile(r"(\d+)\s+COURSES?\b")
+_NEEDS_SUBGROUPS = re.compile(r"(\d+)\s+SUB-?GROUPS?\b")
+_NEEDS_GPA = re.compile(r"(\d+(?:\.\d+)?)\s+GPA\b")
+
+
+def _parse_needs(raw: str) -> dict:
+    """Turn a NEEDS body into structured fields. Missing keys are omitted."""
+    out: dict = {}
+    if m := _NEEDS_UNITS.search(raw):
+        out["units"] = float(m.group(1))
+    if m := _NEEDS_COURSES.search(raw):
+        out["courses"] = int(m.group(1))
+    if m := _NEEDS_SUBGROUPS.search(raw):
+        out["sub_groups"] = int(m.group(1))
+    if m := _NEEDS_GPA.search(raw):
+        out["gpa"] = float(m.group(1))
+    return out
 
 # Font signature for DARS section titles: bold face at >=11pt.
 _TITLE_MIN_SIZE = 11.0
@@ -162,11 +183,109 @@ def _parse_remaining(lines: list[dict]) -> list[dict]:
         prev_was_title = False
         m = _NEEDS.match(ln["text"])
         if m:
+            raw = m.group(1).strip()
             out.append({
                 "section": section or "(unknown)",
-                "needs_raw": m.group(1).strip(),
+                "needs_raw": raw,
+                "needs": _parse_needs(raw),
                 "eligible": _collect_select_from(lines, i),
             })
+    return out
+
+
+# Section titles that look like headings but aren't graduation requirements
+# These sections only re-list courses that already appear under their real requirement section above, so filtering them out doesn't lose any fulfillment.
+_NON_REQUIREMENT_HINTS = (
+    "IN PROGRESS COURSEWORK",
+    "RESTRICTION",
+    "AVAILABLE COURSES",
+    "ADVANCED STANDING",
+    "ALTERNATE ARTICULATIONS",
+    "TRANSFER COURSES",
+    "ACADEMIC RECORD",
+    "UCLA COURSEWORK",
+    "ACADEMIC RESIDENCE",
+)
+
+# Standalone titles that would be ambiguous as substrings — exact match only.
+_NON_REQUIREMENT_EXACT = {
+    "LOWER DIVISION COURSES",
+    "UPPER DIVISION COURSES",
+}
+
+
+def _is_requirement_title(title: str) -> bool:
+    up = title.upper().strip()
+    if up in _NON_REQUIREMENT_EXACT:
+        return False
+    return not any(hint in up for hint in _NON_REQUIREMENT_HINTS)
+
+
+def _parse_sections(lines: list[dict]) -> list[dict]:
+    """Group everything under top-level section titles so the dashboard can show fulfilled vs unfulfilled categories. 
+    A section is included if it has at least one NEEDS line or at least one course row."""
+    sections: list[dict] = []
+    by_title: dict[str, dict] = {}
+    section = ""
+    prev_was_title = False
+
+    def slot(title: str) -> dict:
+        if title not in by_title:
+            entry = {
+                "title": title,
+                "needs": [],
+                "completed": [],
+                "in_progress": [],
+            }
+            by_title[title] = entry
+            sections.append(entry)
+        return by_title[title]
+
+    for i, ln in enumerate(lines):
+        if ln["is_title"]:
+            section = f"{section} {ln['text']}" if prev_was_title and section else ln["text"]
+            prev_was_title = True
+            continue
+        prev_was_title = False
+        if not section:
+            continue
+        text = ln["text"]
+        if m := _NEEDS.match(text):
+            raw = m.group(1).strip()
+            slot(section)["needs"].append({
+                "needs_raw": raw,
+                "needs": _parse_needs(raw),
+                "eligible": _collect_select_from(lines, i),
+            })
+            continue
+        if cm := _COURSE.match(text):
+            grade = cm.group("grade")
+            if grade == "NR":
+                continue
+            course = {
+                "term": cm.group("term"),
+                "code": cm.group("code").strip(),
+                "units": float(cm.group("units")),
+                "grade": grade,
+                "title": cm.group("title").strip(),
+            }
+            slot(section)["in_progress" if grade == "IP" else "completed"].append(course)
+
+    out: list[dict] = []
+    for s in sections:
+        if not _is_requirement_title(s["title"]):
+            continue
+        if not s["needs"] and not s["completed"] and not s["in_progress"]:
+            continue
+        if s["needs"]:
+            status = "unfulfilled"
+        elif s["completed"]:
+            status = "fulfilled"
+        elif s["in_progress"]:
+            status = "in_progress"
+        else:
+            continue
+        out.append({**s, "status": status})
     return out
 
 
@@ -177,6 +296,7 @@ def parse_pdf(source: Union[str, Path, bytes]) -> dict:
         "completed": completed,
         "in_progress": in_progress,
         "remaining": _parse_remaining(lines),
+        "sections": _parse_sections(lines),
     }
 
 
