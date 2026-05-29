@@ -9,11 +9,16 @@ import {
 } from "firebase/auth";
 import { auth, googleProvider } from "../../lib/firebase";
 import { useAuth } from "../../lib/auth";
+import { Alert } from "../../components/ui/Alert";
+import { Button } from "../../components/ui/Button";
+import { TextField } from "../../components/ui/TextField";
+
+type Mode = "signin" | "signup";
 
 export default function LoginPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -52,91 +57,63 @@ export default function LoginPage() {
     }
   }
 
-  const input: React.CSSProperties = {
-    width: "100%",
-    padding: "0.55rem 0.7rem",
-    borderRadius: 6,
-    border: "1px solid var(--border)",
-    background: "var(--card)",
-    color: "var(--text)",
-    fontSize: "0.95rem",
-  };
-
-  const btn: React.CSSProperties = {
-    padding: "0.55rem 1rem",
-    borderRadius: 6,
-    border: "1px solid var(--border)",
-    background: "var(--card)",
-    color: "var(--text)",
-    fontWeight: 500,
-    fontSize: "0.9rem",
-  };
-
-  const btnPrimary: React.CSSProperties = {
-    ...btn,
-    background: "var(--accent)",
-    borderColor: "var(--accent)",
-    color: "#fff",
-    width: "100%",
-  };
+  function toggleMode() {
+    setMode(mode === "signin" ? "signup" : "signin");
+    setErr("");
+  }
 
   return (
-    <main style={{ maxWidth: 360, margin: "0 auto", padding: "4rem 1.25rem" }}>
-      <h1 style={{ fontSize: "1.5rem", fontWeight: 600, margin: 0, marginBottom: "1.5rem" }}>
+    <main className="mx-auto max-w-[360px] px-5 py-16">
+      <h1 className="m-0 mb-6 text-2xl font-semibold">
         {mode === "signin" ? "Sign in" : "Create account"}
       </h1>
 
-      <form onSubmit={handleEmail} style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-        <input
+      <form onSubmit={handleEmail} className="flex flex-col gap-[0.6rem]">
+        <TextField
           type="email"
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
-          style={input}
         />
-        <input
+        <TextField
           type="password"
           placeholder="Password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
           minLength={6}
-          style={input}
         />
-        <button type="submit" disabled={busy} style={btnPrimary}>
+        <Button type="submit" variant="primary" disabled={busy} className="w-full">
           {busy ? "…" : mode === "signin" ? "Sign in" : "Sign up"}
-        </button>
+        </Button>
       </form>
 
-      <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", margin: "1rem 0", color: "var(--muted)", fontSize: "0.8rem" }}>
-        <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+      <div className="my-4 flex items-center gap-[0.6rem] text-[0.8rem] text-muted">
+        <div className="h-px flex-1 bg-border" />
         or
-        <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+        <div className="h-px flex-1 bg-border" />
       </div>
 
-      <button type="button" onClick={handleGoogle} disabled={busy} style={{ ...btn, width: "100%" }}>
+      <Button onClick={handleGoogle} disabled={busy} className="w-full">
         Continue with Google
-      </button>
+      </Button>
 
-      <p style={{ marginTop: "1.25rem", fontSize: "0.85rem", color: "var(--muted)", textAlign: "center" }}>
+      <p className="mt-5 text-center text-[0.85rem] text-muted">
         {mode === "signin" ? "Need an account?" : "Already have one?"}{" "}
         <button
           type="button"
-          onClick={() => {
-            setMode(mode === "signin" ? "signup" : "signin");
-            setErr("");
-          }}
-          style={{ background: "none", border: "none", color: "var(--accent)", padding: 0, fontSize: "0.85rem" }}
+          onClick={toggleMode}
+          className="border-none bg-transparent p-0 text-[0.85rem] text-accent"
         >
           {mode === "signin" ? "Sign up" : "Sign in"}
         </button>
       </p>
 
       {err && (
-        <p style={{ marginTop: "1rem", padding: "0.6rem 0.75rem", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, color: "var(--error)", fontSize: "0.85rem" }}>
-          {err}
-        </p>
+        <div className="mt-4">
+          <Alert tone="error">{err}</Alert>
+        </div>
       )}
     </main>
   );
