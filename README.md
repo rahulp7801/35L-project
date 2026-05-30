@@ -1,19 +1,14 @@
 # DARS Tracker
 
-A web app for UCLA students to upload their **Degree Audit Report (DARS)** PDF and see which courses they've completed, which they're currently taking, and which requirements are still outstanding along with the specific courses that can satisfy each remaining requirement.
+This is a web app for UCLA students. You upload your DARS PDF (the Degree Audit Report) and it shows you what classes you've already finished, what you're taking right now, and what's still left to do. For each requirement you haven't met yet, it also lists the specific courses that would satisfy it.
 
-The PDF is processed in the backend and is not stored. Only the extracted structured data such as course rows and requirement summaries is saved and linked to the respective account.
+The PDF itself doesn't get saved anywhere. We pull the structured data out of it (course rows, requirement summaries) and store that against your account. The file gets dropped after parsing.
 
 ---
 
-## Features
+## What it does
 
-- **Google + email/password sign-in** via Firebase Auth.
-- **Drag-and-drop upload** with an in-browser PDF preview before you commit.
-- **Font-aware DARS parser** that uses font metadata to find section headings.
-- **Live dashboard** with cards for completed, in-progress, and outstanding requirements.
-- **Upload history** in Firestore that updates live and supports delete.
-- **Client-side and server-side validation** for PDF only and size up to 10 MB.
+You sign in with Google or with an email and password through Firebase. From there you drag a PDF onto the page, look at the preview, and hit upload if it's the right one. The parser uses font metadata from the PDF to organize section headings versus course rows. After it runs, you get a dashboard split into completed, in-progress, outstanding requirements, along with a progress view that shows which graduation sections are fulfilled. Your past uploads are in Firestore and you can delete them whenever. Files have to be PDFs and 10 MB or smaller. We check that on both the client and the server, since you can't trust client checks on their own.
 
 ---
 
@@ -30,11 +25,11 @@ The PDF is processed in the backend and is not stored. Only the extracted struct
 
 ## Architecture
 
-The architecture is modeled with two diagrams: an Entity-Relationship Diagram for the data view, and a Sequence Diagram for the behavioral view.
+There are two diagrams here. The first one shows the data side of things, and the second walks through what actually happens when you upload a file.
 
-### Entity-Relationship Diagram (data view)
+### Data model
 
-The Firestore data model. Each signed-in `User` owns many `Upload` documents, and each upload contains the parsed `Course` rows and outstanding `Requirement` rows extracted from that DARS PDF. Rectangles are entities, ovals are attributes, diamonds are relationships, and labels on the edges show cardinality.
+Each signed-in user owns many uploads. Every upload holds the parsed course rows and the outstanding requirements pulled from that PDF. Rectangles are entities, ovals are attributes, and diamonds are relationships. The numbers on the edges are just how many of one thing connect to the other. This is known as the Entity-Relationship Diagram since it shows relationships between all entities in our data.
 
 ```mermaid
 flowchart LR
@@ -77,11 +72,9 @@ flowchart LR
   class uid,email,displayName,upId,filename,size,uploadedAt,term,code,units,grade,cTitle,section,needs,eligible attr;
 ```
 
-A `Course` row whose `grade` is `IP` is currently in progress; any other grade means completed. A `Requirement` is one outstanding `NEEDS:` line from the audit, with `eligible` listing the courses that can satisfy it.
+### What happens when you upload
 
-### Sequence Diagram (behavioral view)
-
-What happens from the moment the user drops a PDF until parsed cards appear on screen. Solid arrows are synchronous calls, dashed arrows are responses.
+This is what happens from when you drop a PDF on the page to when the cards show up on the screen. Solid arrows are calls, dashed ones are responses coming back. This is known as the Sequence Diagram as it models the app behavior.
 
 ```mermaid
 sequenceDiagram
@@ -100,7 +93,7 @@ sequenceDiagram
   api->>parser: parse_pdf(bytes)
   parser->>parser: extract words with font metadata
   parser->>parser: classify titles, course rows, NEEDS lines
-  parser-->>api: completed, in_progress, remaining
+  parser-->>api: completed, in_progress, remaining, sections
   api-->>ui: 200 JSON
   ui->>fs: addDoc(users/{uid}/uploads, parsed)
   fs-->>ui: onSnapshot update
@@ -109,45 +102,11 @@ sequenceDiagram
 
 ---
 
-## Folder layout
-
-```
-.
-├── backend/
-│   ├── main.py            FastAPI app, POST /parse endpoint, size limit
-│   ├── parser.py          DARS PDF parser (pdfplumber + regex)
-│   └── requirements.txt
-└── frontend/
-    ├── app/
-    │   ├── layout.tsx     Root layout, wraps app in AuthProvider
-    │   ├── page.tsx       Authenticated dashboard: upload + history + parsed cards
-    │   ├── login/
-    │   │   └── page.tsx   Google + email/password sign-in
-    │   └── globals.css
-    ├── lib/
-    │   ├── firebase.ts    Firebase initialization (Auth + Firestore)
-    │   └── auth.tsx       AuthProvider + useAuth() hook
-    ├── next.config.ts
-    └── package.json
-```
-
----
-
 ## Running it locally
 
-Need two terminals (one for each server) and a Firebase project.
+Need two terminals open (one for each server) and a Firebase project.
 
-### Prerequisites
-
-- **Node.js 20+** and npm
-- **Python 3.10+**
-- A **Firebase project** with:
-  - **Authentication** enabled (turn on the Google and Email/Password providers in the Firebase Console)
-  - **Cloud Firestore** in Native mode
-
-### 1. Firebase config (one-time)
-
-In the Firebase Console, open your project → *Project settings* → *Your apps* → register a Web app. Copy the config values into a new file `frontend/.env.local`:
+Make sure you have Node.js 20+ with npm, and Python 3.10+. Then go set up a Firebase project with Authentication and enable both Google and Email/Password providers. Also need Cloud Firestore in Native mode. In Firebase, copy the config values it gives you into `frontend/.env.local`:
 
 ```bash
 NEXT_PUBLIC_FIREBASE_API_KEY=...
@@ -156,7 +115,7 @@ NEXT_PUBLIC_FIREBASE_PROJECT_ID=your-project
 NEXT_PUBLIC_FIREBASE_APP_ID=1:...:web:...
 ```
 
-For development, the Firestore security rules can be permissive to authenticated users:
+Example Firestore rules:
 
 ```
 rules_version = '2';
@@ -169,7 +128,7 @@ service cloud.firestore {
 }
 ```
 
-### 2. Backend
+Then configure the backend:
 
 ```bash
 cd backend
@@ -179,9 +138,9 @@ pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
 
-The server listens on `http://localhost:8000` and only accepts requests from the Next.js app at `http://localhost:3000`.
+Will run on `http://localhost:8000` and only takes requests from the Next.js app at `http://localhost:3000` (or `3001` if 3000 is busy).
 
-### 3. Frontend
+And finally frontend:
 
 ```bash
 cd frontend
@@ -189,28 +148,4 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`. You'll be redirected to `/login` until you sign in.
-
----
-
-## API
-
-### `POST /parse`
-
-Sends a DARS PDF to the server in a `file` field.
-
-- Rejects files that are not PDFs with `400`.
-- Rejects files over 10 MB with `413`.
-- Returns:
-
-```json
-{
-  "completed":   [{ "term": "FA23", "code": "COM SCI 35L", "units": 4.0, "grade": "A",  "title": "Software Construction" }],
-  "in_progress": [{ "term": "WI26", "code": "COM SCI 111", "units": 4.0, "grade": "IP", "title": "Operating Systems Principles" }],
-  "remaining":   [{ "section": "UPPER-DIVISION ELECTIVES", "needs_raw": "8.0 UNITS", "eligible": "COM SCI 130, 131, 132, ..." }]
-}
-```
-
-The backend does not save the uploaded PDF or the parsed result. We use Firestore for storage and it is only written by the client after a successful parse.
-
----
+Then open `http://localhost:3000`.
