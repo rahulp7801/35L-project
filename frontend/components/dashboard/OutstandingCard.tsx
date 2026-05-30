@@ -1,6 +1,7 @@
 import { Card } from "../ui/Card";
 import { CardHeader } from "../ui/CardHeader";
 import { Chip } from "../ui/Chip";
+import { EligibleCourses } from "./EligibleCourses";
 import { describeNeed } from "../../lib/format";
 import type { Needs, Remaining, Section } from "../../lib/types";
 
@@ -85,12 +86,7 @@ function OutstandingItemRow({ item }: { item: OutstandingItem }) {
         </p>
       )}
 
-      {item.eligible && (
-        <p className="m-0 mt-[0.5rem] font-mono text-[0.82rem] leading-relaxed text-muted">
-          <span className="font-medium text-text">From: </span>
-          {item.eligible}
-        </p>
-      )}
+      {item.eligible && <EligibleCourses raw={item.eligible} />}
     </li>
   );
 }
