@@ -41,6 +41,27 @@ _NEEDS = re.compile(r"^NEEDS:\s*(.+)$")
 _SELECT = re.compile(r"^SELECT FROM:\s*(.*)$")
 _NOT_FROM = re.compile(r"^->\s*NOT FROM:")
 
+
+def _collapse_periodic(tokens: list[str]) -> list[str]:
+    """If tokens are a periodic repeat (e.g. ['PHILOS','PHILOS','PHILOS'] or
+    ['COM','SCI','COM','SCI']), return one period. Otherwise return as-is.
+
+    Multi-column SELECT FROM layouts put the same department header in each
+    column at the same y, so PDF text extraction merges them into one line."""
+    n = len(tokens)
+    if n < 2:
+        return tokens
+    for k in range(1, n // 2 + 1):
+        if n % k != 0:
+            continue
+        if all(tokens[i] == tokens[i % k] for i in range(k, n)):
+            return tokens[:k]
+    return tokens
+
+
+def _dedupe_columns(text: str) -> str:
+    return " ".join(_collapse_periodic(text.split()))
+
 # Pieces inside a NEEDS line.
 _NEEDS_UNITS = re.compile(r"(\d+(?:\.\d+)?)\s+UNITS?\b")
 _NEEDS_COURSES = re.compile(r"(\d+)\s+COURSES?\b")
@@ -69,10 +90,33 @@ def _is_title_font(word: dict) -> bool:
     return "Bold" in word["fontname"] and word["size"] >= _TITLE_MIN_SIZE
 
 
-def _extract_lines(source: Union[str, Path, bytes]) -> list[dict]:
-    """Return a list of {text, is_title} dicts in reading order.
+# Horizontal gap (in PDF points) between consecutive words in the same y-row
+# above which we treat them as belonging to different columns. Normal inter-word
+# spacing in DARS body text is 2-5pt; columns are typically separated by >=10pt.
+_COLUMN_GAP_PT = 8.0
 
-    A line is a title iff every word on it uses the bold heading font and the line's letters are all uppercase
+
+def _split_cells(row_words: list[dict]) -> list[dict]:
+    """Group a y-sorted row of words into cells separated by large x-gaps."""
+    if not row_words:
+        return []
+    groups: list[list[dict]] = [[row_words[0]]]
+    for prev, cur in zip(row_words, row_words[1:]):
+        if cur["x0"] - prev["x1"] > _COLUMN_GAP_PT:
+            groups.append([cur])
+        else:
+            groups[-1].append(cur)
+    return [
+        {"text": " ".join(w["text"] for w in g), "x0": g[0]["x0"]}
+        for g in groups
+    ]
+
+
+def _extract_lines(source: Union[str, Path, bytes]) -> list[dict]:
+    """Return a list of {text, is_title, cells} dicts in reading order.
+
+    A line is a title iff every word on it uses the bold heading font and the line's letters are all uppercase.
+    `cells` is the row split into column groups (see _split_cells); for single-column rows it has length 1.
     """
     if isinstance(source, (bytes, bytearray)):
         opener = pdfplumber.open(BytesIO(source))
@@ -94,7 +138,11 @@ def _extract_lines(source: Union[str, Path, bytes]) -> list[dict]:
                 bold_big = all(_is_title_font(w) for w in row)
                 letters = [c for c in text if c.isalpha()]
                 is_title = bool(bold_big and letters and all(c.isupper() for c in letters))
-                lines.append({"text": text, "is_title": is_title})
+                lines.append({
+                    "text": text,
+                    "is_title": is_title,
+                    "cells": _split_cells(row),
+                })
     return lines
 
 
@@ -130,10 +178,45 @@ def _parse_courses(lines: list[dict]) -> tuple[list[dict], list[dict]]:
     return completed, in_progress
 
 
+def _cluster_columns(rows: list[list[dict]], tolerance: float = 10.0) -> list[float]:
+    """Cluster cell x0 positions across rows into column centers, sorted left-to-right."""
+    all_x = sorted(c["x0"] for row in rows for c in row)
+    if not all_x:
+        return []
+    clusters: list[list[float]] = [[all_x[0]]]
+    for x in all_x[1:]:
+        if x - clusters[-1][-1] <= tolerance:
+            clusters[-1].append(x)
+        else:
+            clusters.append([x])
+    return [sum(c) / len(c) for c in clusters]
+
+
+def _emit_column_major(rows: list[list[dict]]) -> str:
+    """Walk cells column-by-column (top-to-bottom within each column, left-to-right
+    across columns) so each column's dept header stays adjacent to that column's
+    course numbers in the output stream."""
+    if not rows:
+        return ""
+    if all(len(row) <= 1 for row in rows):
+        return " ".join(c["text"] for row in rows for c in row)
+    centers = _cluster_columns(rows)
+    columns: list[list[str]] = [[] for _ in centers]
+    for row in rows:
+        for c in row:
+            idx = min(range(len(centers)), key=lambda i: abs(c["x0"] - centers[i]))
+            columns[idx].append(c["text"])
+    return " ".join(text for col in columns for text in col)
+
+
 def _collect_select_from(lines: list[dict], start_idx: int) -> str:
     """After a NEEDS line, find the next SELECT FROM line and join its body
-    with any wrapped continuation lines. Stops at the next requirement,
-    a course-history row, or a sub-heading.
+    with any wrapped continuation rows. Stops at the next requirement,
+    a course-history row, or a single-cell sub-heading.
+
+    Continuation rows are emitted column-major when they contain multiple cells,
+    so multi-column DARS layouts produce a stream where each dept header is
+    adjacent to its own column's numbers.
 
     Returns "" when there's no SELECT FROM before the next requirement
     (e.g. GPA-only or unit-total NEEDS lines)."""
@@ -146,7 +229,8 @@ def _collect_select_from(lines: list[dict], start_idx: int) -> str:
         if not m:
             i += 1
             continue
-        parts = [m.group(1).strip()] if m.group(1).strip() else []
+        body = m.group(1).strip()
+        continuation_rows: list[list[dict]] = []
         j = i + 1
         while j < len(lines):
             nxt = lines[j]
@@ -158,14 +242,22 @@ def _collect_select_from(lines: list[dict], start_idx: int) -> str:
             # a course-history row means we've crossed into a new sub-block.
             if _COURSE.match(t):
                 break
-            # a non-bold sub-heading like "SEVEN COMPUTER SCIENCE REQUIRED COURSES"
-            # (all-uppercase words, no digits) also marks a new sub-block.
+            # An all-uppercase no-digit row with a single cell is a genuine
+            # sub-heading like "SEVEN COMPUTER SCIENCE REQUIRED COURSES" and
+            # ends this SELECT FROM. With multiple cells, it's a multi-column
+            # dept-header row; keep collecting.
             letters = [c for c in t if c.isalpha()]
-            if letters and all(c.isupper() for c in letters) and not any(c.isdigit() for c in t):
+            if (
+                letters
+                and all(c.isupper() for c in letters)
+                and not any(c.isdigit() for c in t)
+                and len(nxt["cells"]) <= 1
+            ):
                 break
-            parts.append(t.strip())
+            continuation_rows.append(nxt["cells"])
             j += 1
-        return " ".join(parts)
+        joined = _emit_column_major(continuation_rows)
+        return _dedupe_columns(" ".join(p for p in (body, joined) if p))
     return ""
 
 
