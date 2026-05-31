@@ -16,6 +16,7 @@ import { StatStrip } from "../components/dashboard/StatStrip";
 import { ProgressCard } from "../components/dashboard/ProgressCard";
 import { CourseCard } from "../components/dashboard/CourseCard";
 import { OutstandingCard } from "../components/dashboard/OutstandingCard";
+import { CourseGradesCard } from "../components/grades/CourseGradesCard";
 
 export default function Home() {
   const router = useRouter();
@@ -73,6 +74,10 @@ export default function Home() {
           <Alert tone="error">✕ {upload.message}</Alert>
         </div>
       )}
+
+      <div className="mb-5">
+        <CourseGradesCard />
+      </div>
 
       {parsed ? (
         <div className="grid gap-5">
