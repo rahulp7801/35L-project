@@ -1,7 +1,18 @@
 // Client helpers for the backend grade + recommendation API.
-// Talks to GET /grades, GET /grades/search, and POST /recommend; shapes mirror backend/grades.py.
+// Talks to GET /grades, GET /grades/search, GET /grades/browse,
+// GET /grades/departments, GET /instructors/search, GET /instructors,
+// and POST /recommend; shapes mirror backend/grades.py.
 
-import { GRADES_ENDPOINT, GRADES_SEARCH_ENDPOINT, RECOMMEND_ENDPOINT } from "./constants";
+import {
+  GRADES_BATCH_ENDPOINT,
+  GRADES_BROWSE_ENDPOINT,
+  GRADES_DEPARTMENTS_ENDPOINT,
+  GRADES_ENDPOINT,
+  GRADES_SEARCH_ENDPOINT,
+  INSTRUCTOR_ENDPOINT,
+  INSTRUCTORS_SEARCH_ENDPOINT,
+  RECOMMEND_ENDPOINT,
+} from "./constants";
 import type { EligibleGroup } from "./eligible";
 
 export type GradeStats = {
@@ -49,6 +60,33 @@ export async function fetchCourseGrades(
   return res.json();
 }
 
+// Lightweight per-course stats: same fields as a BrowseHit but always
+// returned (avg_gpa=null when we have no data for that course) so the caller
+// gets a 1:1 row for every requested course.
+export type CourseOverview = {
+  dept: string;
+  number: string;
+  title: string;
+  avg_gpa: number | null;
+  graded: number;
+  total: number;
+};
+
+// Look up many courses in one round trip. Used by dashboard widgets that need
+// historical averages for the entire transcript at once.
+export async function fetchGradesBatch(
+  courses: { dept: string; number: string }[]
+): Promise<CourseOverview[]> {
+  if (courses.length === 0) return [];
+  const res = await fetch(GRADES_BATCH_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ courses }),
+  });
+  if (!res.ok) throw new Error(`batch lookup failed (HTTP ${res.status})`);
+  return res.json();
+}
+
 // One ranked course in a requirement's recommendations.
 export type Recommendation = {
   dept: string;
@@ -76,6 +114,96 @@ export async function fetchRecommendations(
   });
   if (!res.ok) throw new Error(`recommend failed (HTTP ${res.status})`);
   return res.json();
+}
+
+// --- instructor search ---
+
+// One row in the instructor-search autocomplete dropdown.
+export type InstructorHit = {
+  instructor: string;
+  course_count: number;
+  avg_gpa: number | null;
+  graded: number;
+  total: number;
+};
+
+// One course taught by an instructor, including their personal distribution.
+export type InstructorCourse = GradeStats & {
+  dept: string;
+  number: string;
+  title: string;
+};
+
+// Full instructor profile: every course they've taught + a career aggregate.
+export type InstructorDetail = {
+  instructor: string;
+  course_count: number;
+  overall: GradeStats;
+  courses: InstructorCourse[];
+};
+
+export async function searchInstructors(
+  query: string,
+  limit = 8
+): Promise<InstructorHit[]> {
+  const url = `${INSTRUCTORS_SEARCH_ENDPOINT}?q=${encodeURIComponent(query)}&limit=${limit}`;
+  const res = await fetch(url);
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function fetchInstructor(
+  name: string
+): Promise<InstructorDetail | null> {
+  const url = `${INSTRUCTOR_ENDPOINT}?name=${encodeURIComponent(name)}`;
+  const res = await fetch(url);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`instructor lookup failed (HTTP ${res.status})`);
+  return res.json();
+}
+
+// --- filtered course browse ---
+
+export type BrowseLevel = "lower" | "upper" | "graduate";
+
+export type BrowseFilters = {
+  dept?: string;
+  min_gpa?: number;
+  level?: BrowseLevel;
+  limit?: number;
+};
+
+export type BrowseHit = {
+  dept: string;
+  number: string;
+  title: string;
+  avg_gpa: number | null;
+  graded: number;
+  total: number;
+};
+
+// Compact-form filtered list of courses ranked by historical avg GPA.
+export async function browseCourses(filters: BrowseFilters): Promise<BrowseHit[]> {
+  const params = new URLSearchParams();
+  if (filters.dept) params.set("dept", filters.dept);
+  if (filters.min_gpa !== undefined) params.set("min_gpa", String(filters.min_gpa));
+  if (filters.level) params.set("level", filters.level);
+  if (filters.limit !== undefined) params.set("limit", String(filters.limit));
+  const res = await fetch(`${GRADES_BROWSE_ENDPOINT}?${params}`);
+  if (!res.ok) throw new Error(`browse failed (HTTP ${res.status})`);
+  return res.json();
+}
+
+// Department codes for the browse-card dropdown. Cached at module level since
+// the list is fixed at server startup; no point refetching across cards.
+let _deptCache: Promise<string[]> | null = null;
+export function fetchDepartments(): Promise<string[]> {
+  if (!_deptCache) {
+    _deptCache = fetch(GRADES_DEPARTMENTS_ENDPOINT)
+      .then((r) => (r.ok ? r.json() : []))
+      .catch(() => []);
+  }
+  return _deptCache;
 }
 
 // --- presentation helpers ---
