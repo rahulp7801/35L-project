@@ -1,9 +1,21 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from parser import parse_pdf
+from grades import get_grade_data
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Load and aggregate the CPRA grade data once, at startup, so the first
+    # request isn't slow and a bad data dir fails fast.
+    get_grade_data()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 # our next.js frontend runs on port 3000, this server runs on 8000
 # browsers block requests across different ports unless we explicitly allow it
@@ -28,3 +40,25 @@ async def parse(file: UploadFile = File(...)):
         return parse_pdf(contents)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"could not parse pdf: {e}")
+
+
+@app.get("/grades")
+def grades(dept: str, number: str):
+    """Historical grade distribution for one course
+
+    Query params:
+        dept
+        number
+    Returns overall + per-instructor + per-term distributions with average GPA,
+    or 404 if we have no data for that course.
+    """
+    course = get_grade_data().course(dept, number)
+    if course is None:
+        raise HTTPException(status_code=404, detail=f"no grade data for {dept} {number}")
+    return course
+
+
+@app.get("/grades/search")
+def grades_search(q: str, limit: int = 25):
+    """Autocomplete-style lookup by 'DEPT NUMBER' or title fragment."""
+    return get_grade_data().search(q, limit=limit)
