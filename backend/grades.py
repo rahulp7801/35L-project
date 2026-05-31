@@ -52,6 +52,15 @@ _TERM_LETTER = {"F": ("Fall", 4), "W": ("Winter", 1), "S": ("Spring", 2)}
 _LETTER_TERM = re.compile(r"^(\d{2})([FWS])$")
 _SUMMER_TERM = re.compile(r"^(\d{2})([12])$")
 
+# Catalog-number ranges per academic level. Half-open [lo, hi).
+# The browse() filter uses the numeric portion of the catalog number,
+# so suffixes like 'M152A' or 'C111' map to 152 and 111 respectively.
+_LEVELS: dict[str, tuple[int, int]] = {
+    "lower": (0, 100),
+    "upper": (100, 200),
+    "graduate": (200, 10_000),
+}
+
 
 def decode_term(code: str) -> dict:
     """Turn a raw term code into {code, year, quarter, label, sort}.
@@ -163,7 +172,9 @@ class GradeData:
 
     def __init__(self) -> None:
         self._courses: dict[tuple[str, str], _CourseAgg] = {}
+        # Both indexes are lazy: built on first access, reused thereafter.
         self._by_dept: Optional[dict[str, list[str]]] = None
+        self._by_instructor: Optional[dict[str, list[tuple[str, str]]]] = None
 
     def _slot(self, dept: str, number: str) -> _CourseAgg:
         key = (dept, number)
@@ -177,6 +188,72 @@ class GradeData:
         """Story #3: full distribution for one course, or None if unknown."""
         agg = self._courses.get((normalize_dept(dept), normalize_number(number)))
         return agg.render() if agg else None
+
+    def course_overview(self, dept: str, number: str) -> Optional[dict]:
+        """Lightweight per-course stats: avg GPA + counts only, no instructor or
+        term breakdowns. Used by batch lookups (e.g. the dashboard's
+        comparison card) where we'd otherwise pay for per-course renderings
+        that just get discarded."""
+        agg = self._courses.get((normalize_dept(dept), normalize_number(number)))
+        if agg is None:
+            return None
+        stats = compute_stats(agg.overall)
+        return {
+            "dept": agg.dept, "number": agg.number, "title": agg.title,
+            "avg_gpa": stats["avg_gpa"],
+            "graded": stats["graded"], "total": stats["total"],
+        }
+
+    def course_planning(
+        self,
+        dept: str,
+        number: str,
+        top_instructors: int = 2,
+        min_graded_for_instructor: int = 50,
+    ) -> Optional[dict]:
+        """Planner-friendly per-course rollup.
+
+        Returns avg GPA, the set of quarters this course has historically been
+        offered in (used as a soft "offered in season X" signal), and the top-N
+        instructors by avg GPA among those with enough graded students to be a
+        meaningful signal (small samples sort by luck, not difficulty).
+
+        Returns None when the course isn't in the dataset; the planner falls
+        back to a no-data placeholder so the candidate still appears in the
+        recommendation, just deprioritized."""
+        agg = self._courses.get((normalize_dept(dept), normalize_number(number)))
+        if agg is None:
+            return None
+        overall = compute_stats(agg.overall)
+        seasons_seen: set[str] = set()
+        for term in agg.by_term:
+            decoded = decode_term(term)
+            if decoded["quarter"]:
+                seasons_seen.add(decoded["quarter"])
+        season_order = ["Fall", "Winter", "Spring", "Summer"]
+        seasons = [s for s in season_order if s in seasons_seen]
+        instructors: list[dict] = []
+        for name, counts in agg.by_instructor.items():
+            stats = compute_stats(counts)
+            if (
+                stats["avg_gpa"] is not None
+                and stats["graded"] >= min_graded_for_instructor
+            ):
+                instructors.append({
+                    "instructor": name,
+                    "avg_gpa": stats["avg_gpa"],
+                    "graded": stats["graded"],
+                })
+        instructors.sort(key=lambda r: r["avg_gpa"], reverse=True)
+        return {
+            "dept": agg.dept,
+            "number": agg.number,
+            "title": agg.title,
+            "avg_gpa": overall["avg_gpa"],
+            "graded": overall["graded"],
+            "seasons": seasons,
+            "top_instructors": instructors[:top_instructors],
+        }
 
     def search(self, query: str, limit: int = 25) -> list[dict]:
         """Lightweight lookup by 'DEPT NUMBER' or partial title; lightweight rows."""
@@ -195,14 +272,32 @@ class GradeData:
         rows.sort(key=lambda r: (q not in f"{r['dept']} {r['number']}", -(r["total"])))
         return rows[:limit]
 
-    def _dept_numbers(self, dept: str) -> list[str]:
-        """All catalog numbers we have data for in a department (cached)."""
+    def _ensure_by_dept(self) -> dict[str, list[str]]:
+        """Build the dept → catalog-numbers index on first access."""
         if self._by_dept is None:
             by_dept: dict[str, list[str]] = defaultdict(list)
             for (d, n) in self._courses:
                 by_dept[d].append(n)
             self._by_dept = by_dept
-        return self._by_dept.get(dept, [])
+        return self._by_dept
+
+    def _dept_numbers(self, dept: str) -> list[str]:
+        """All catalog numbers we have data for in a department (cached)."""
+        return self._ensure_by_dept().get(dept, [])
+
+    def _ensure_by_instructor(self) -> dict[str, list[tuple[str, str]]]:
+        """Build the instructor → list of (dept, number) keys on first access.
+
+        Each _CourseAgg already tallies by_instructor, so this index is just an
+        inversion: for every (dept, number) we record which instructors taught
+        it, then flip the relation."""
+        if self._by_instructor is None:
+            idx: dict[str, list[tuple[str, str]]] = defaultdict(list)
+            for key, agg in self._courses.items():
+                for instructor in agg.by_instructor:
+                    idx[instructor].append(key)
+            self._by_instructor = idx
+        return self._by_instructor
 
     def _resolve(self, dept: str, raw_number: str) -> list[tuple[str, str]]:
         """Resolve one eligible entry to the (dept, number) keys we actually have."""
@@ -246,6 +341,115 @@ class GradeData:
         # Best GPA first; courses with no letter grades sink to the bottom.
         rows.sort(key=lambda r: (r["avg_gpa"] is not None, r["avg_gpa"] or 0), reverse=True)
         return {"total_with_data": len(rows), "courses": rows[:limit]}
+
+    def departments(self) -> list[str]:
+        """Sorted list of every department code present in the data."""
+        return sorted(self._ensure_by_dept().keys())
+
+    def browse(
+        self,
+        dept: Optional[str] = None,
+        min_gpa: Optional[float] = None,
+        level: Optional[str] = None,
+        limit: int = 50,
+    ) -> list[dict]:
+        """Filter courses by department, level, and minimum average GPA.
+
+        Args:
+            dept: optional department code, normalized before comparison.
+            min_gpa: optional inclusive floor on the course's overall avg GPA.
+                Courses with no letter grades (avg_gpa is None) are excluded
+                whenever this filter is set.
+            level: optional one of 'lower' (catalog # 0-99), 'upper' (100-199),
+                or 'graduate' (200+). Inferred from the numeric portion of the
+                catalog number, so 'M152A' counts as upper.
+            limit: maximum rows to return.
+
+        Rows are ranked by avg GPA descending; courses with no letter grades
+        sink to the bottom (matched the behavior of recommend()).
+        """
+        dept_norm = normalize_dept(dept) if dept else None
+        bounds = _LEVELS.get(level) if level else None
+        rows: list[dict] = []
+        for (d, n), agg in self._courses.items():
+            if dept_norm and d != dept_norm:
+                continue
+            if bounds is not None:
+                num = _numeric(n)
+                if num is None or not (bounds[0] <= num < bounds[1]):
+                    continue
+            stats = compute_stats(agg.overall)
+            if min_gpa is not None and (
+                stats["avg_gpa"] is None or stats["avg_gpa"] < min_gpa
+            ):
+                continue
+            rows.append({
+                "dept": d, "number": n, "title": agg.title,
+                "avg_gpa": stats["avg_gpa"],
+                "graded": stats["graded"], "total": stats["total"],
+            })
+        rows.sort(key=lambda r: (r["avg_gpa"] is not None, r["avg_gpa"] or 0), reverse=True)
+        return rows[:limit]
+
+    def instructor_search(self, query: str, limit: int = 25) -> list[dict]:
+        """Substring search over instructor names. Lightweight rows for autocomplete.
+
+        Names in the CPRA data are uppercase 'LAST, FIRST M' — the same format
+        we store. Match is case-insensitive substring. Rows whose name starts
+        with the query rank above pure substring matches; ties break on total
+        students taught (most-experienced first)."""
+        q = query.strip().upper()
+        if not q:
+            return []
+        rows: list[dict] = []
+        for name, keys in self._ensure_by_instructor().items():
+            if q not in name:
+                continue
+            overall: Counter = Counter()
+            for key in keys:
+                overall.update(self._courses[key].by_instructor[name])
+            stats = compute_stats(overall)
+            rows.append({
+                "instructor": name,
+                "course_count": len(keys),
+                "avg_gpa": stats["avg_gpa"],
+                "graded": stats["graded"],
+                "total": stats["total"],
+            })
+        rows.sort(key=lambda r: (not r["instructor"].startswith(q), -r["total"]))
+        return rows[:limit]
+
+    def instructor(self, name: str) -> Optional[dict]:
+        """Every course taught by `name`, with per-course stats and a career aggregate.
+
+        Match is case-insensitive equality against the stored 'LAST, FIRST M'
+        form. Returns None when the instructor isn't in our data."""
+        target = name.strip().upper()
+        index = self._ensure_by_instructor()
+        keys = index.get(target)
+        if keys is None:
+            return None
+        courses: list[dict] = []
+        overall: Counter = Counter()
+        for (dept, number) in keys:
+            agg = self._courses[(dept, number)]
+            per_course = agg.by_instructor.get(target, Counter())
+            overall.update(per_course)
+            stats = compute_stats(per_course)
+            courses.append({
+                "dept": dept, "number": number, "title": agg.title,
+                "avg_gpa": stats["avg_gpa"],
+                "graded": stats["graded"], "total": stats["total"],
+                "distribution": stats["distribution"],
+            })
+        # Best GPA first; courses with no letter grades sink to the bottom.
+        courses.sort(key=lambda r: (r["avg_gpa"] is not None, r["avg_gpa"] or 0), reverse=True)
+        return {
+            "instructor": target,
+            "course_count": len(courses),
+            "overall": compute_stats(overall),
+            "courses": courses,
+        }
 
     @property
     def course_count(self) -> int:
