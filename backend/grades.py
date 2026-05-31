@@ -1,25 +1,9 @@
 """Load UCLA CPRA grade-distribution data and aggregate it per course.
 
-Four academic-year exports live gzipped in data/grades/. They arrive in two
-header schemas (the 2021-2023 requests vs the 2023-2025 ones); both are
-normalized to a single internal row. Each source row is a *tally*: how many
-students earned one grade in one (term, course, section, instructor). We sum
-those tallies to build, per course, an overall grade distribution plus
-per-instructor and per-term breakdowns, each carrying an average GPA computed
-from the letter grades only.
-
-Data quirks handled here:
-  - Two column schemas (see _SCHEMAS).
-  - Term codes in two forms: "21F"/"22W"/"22S" (Fall/Winter/Spring) and
-    "221"/"222" (Summer Session 1/2). See decode_term.
-  - The same grade can appear on multiple rows for one section (split tallies);
-    summing num_grd is correct and intended -- do not dedupe.
-  - Subject names with commas are properly quoted, so csv.DictReader is safe.
-
-Public surface:
-  load(data_dir) -> GradeData
-  GradeData.course(dept, number) -> dict | None   (User Story #3)
-  GradeData.search(query)        -> list[dict]
+Four academic-year exports live gzipped in data/grades/.
+Each source row is a tally of how many students earned one grade in one (term, course, section, instructor).
+We sum those tallies to build, per course, an overall grade distribution plus per-instructor and per-term breakdowns, 
+each carrying an average GPA computed from the letter grades only.
 """
 
 from __future__ import annotations
