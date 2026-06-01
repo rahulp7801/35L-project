@@ -1,7 +1,8 @@
-// Client helpers for the backend grade-distribution API (User Story #3).
-// Talks to GET /grades and GET /grades/search; shapes mirror backend/grades.py.
+// Client helpers for the backend grade + recommendation API.
+// Talks to GET /grades, GET /grades/search, and POST /recommend; shapes mirror backend/grades.py.
 
-import { GRADES_ENDPOINT, GRADES_SEARCH_ENDPOINT } from "./constants";
+import { GRADES_ENDPOINT, GRADES_SEARCH_ENDPOINT, RECOMMEND_ENDPOINT } from "./constants";
+import type { EligibleGroup } from "./eligible";
 
 export type GradeStats = {
   avg_gpa: number | null;
@@ -45,6 +46,35 @@ export async function fetchCourseGrades(
   const res = await fetch(url);
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`grade lookup failed (HTTP ${res.status})`);
+  return res.json();
+}
+
+// One ranked course in a requirement's recommendations.
+export type Recommendation = {
+  dept: string;
+  number: string;
+  title: string;
+  avg_gpa: number | null;
+  graded: number;
+  total: number;
+};
+
+export type RecommendResult = {
+  total_with_data: number;
+  courses: Recommendation[];
+};
+
+// Rank a requirement's eligible courses by historical average GPA.
+export async function fetchRecommendations(
+  groups: EligibleGroup[],
+  limit = 5
+): Promise<RecommendResult> {
+  const res = await fetch(RECOMMEND_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ groups, limit }),
+  });
+  if (!res.ok) throw new Error(`recommend failed (HTTP ${res.status})`);
   return res.json();
 }
 
