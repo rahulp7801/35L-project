@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from parser import parse_pdf
 from grades import get_grade_data
@@ -62,3 +63,20 @@ def grades(dept: str, number: str):
 def grades_search(q: str, limit: int = 25):
     """Autocomplete-style lookup by 'DEPT NUMBER' or title fragment."""
     return get_grade_data().search(q, limit=limit)
+
+
+class EligibleGroup(BaseModel):
+    dept: str
+    numbers: list[str] = []
+
+
+class RecommendRequest(BaseModel):
+    groups: list[EligibleGroup] = []
+    limit: int = 5
+
+
+@app.post("/recommend")
+def recommend(req: RecommendRequest):
+    """Rank a requirement's eligible courses by historical average GPA."""
+    groups = [g.model_dump() for g in req.groups]
+    return get_grade_data().recommend(groups, limit=req.limit)

@@ -81,6 +81,15 @@ def normalize_number(value: str) -> str:
     return value.strip().upper()
 
 
+_DIGITS = re.compile(r"\d+")
+
+
+def _numeric(number: str) -> Optional[int]:
+    """Numeric part of a catalog number."""
+    m = _DIGITS.search(number)
+    return int(m.group()) if m else None
+
+
 def compute_stats(counts: Counter) -> dict:
     """Summarize a grade Counter into avg GPA, totals, and an ordered distribution."""
     total = sum(counts.values())
@@ -154,6 +163,7 @@ class GradeData:
 
     def __init__(self) -> None:
         self._courses: dict[tuple[str, str], _CourseAgg] = {}
+        self._by_dept: Optional[dict[str, list[str]]] = None
 
     def _slot(self, dept: str, number: str) -> _CourseAgg:
         key = (dept, number)
@@ -184,6 +194,58 @@ class GradeData:
                 })
         rows.sort(key=lambda r: (q not in f"{r['dept']} {r['number']}", -(r["total"])))
         return rows[:limit]
+
+    def _dept_numbers(self, dept: str) -> list[str]:
+        """All catalog numbers we have data for in a department (cached)."""
+        if self._by_dept is None:
+            by_dept: dict[str, list[str]] = defaultdict(list)
+            for (d, n) in self._courses:
+                by_dept[d].append(n)
+            self._by_dept = by_dept
+        return self._by_dept.get(dept, [])
+
+    def _resolve(self, dept: str, raw_number: str) -> list[tuple[str, str]]:
+        """Resolve one eligible entry to the (dept, number) keys we actually have."""
+        raw = raw_number.strip().upper()
+        if re.search(r"[-–—]", raw):
+            lo, hi = re.split(r"[-–—]", raw, maxsplit=1)
+            lo_n, hi_n = _numeric(lo), _numeric(hi)
+            if lo_n is None or hi_n is None:
+                return []
+            if lo_n > hi_n:
+                lo_n, hi_n = hi_n, lo_n
+            return [
+                (dept, n) for n in self._dept_numbers(dept)
+                if (v := _numeric(n)) is not None and lo_n <= v <= hi_n
+            ]
+        number = normalize_number(raw)
+        return [(dept, number)] if (dept, number) in self._courses else []
+
+    def recommend(self, groups: list[dict], limit: int = 5) -> dict:
+        """Rank eligible courses for a requirement by historical average GPA."""
+        candidates: dict[tuple[str, str], _CourseAgg] = {}
+        for g in groups:
+            dept = normalize_dept(g.get("dept", ""))
+            if not dept:
+                continue
+            for raw in g.get("numbers", []):
+                for key in self._resolve(dept, raw):
+                    candidates[key] = self._courses[key]
+
+        rows = []
+        for (dept, number), agg in candidates.items():
+            stats = compute_stats(agg.overall)
+            rows.append({
+                "dept": dept,
+                "number": number,
+                "title": agg.title,
+                "avg_gpa": stats["avg_gpa"],
+                "graded": stats["graded"],
+                "total": stats["total"],
+            })
+        # Best GPA first; courses with no letter grades sink to the bottom.
+        rows.sort(key=lambda r: (r["avg_gpa"] is not None, r["avg_gpa"] or 0), reverse=True)
+        return {"total_with_data": len(rows), "courses": rows[:limit]}
 
     @property
     def course_count(self) -> int:
