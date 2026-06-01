@@ -2,6 +2,7 @@ import { Card } from "../ui/Card";
 import { CardHeader } from "../ui/CardHeader";
 import { Chip } from "../ui/Chip";
 import { EligibleCourses } from "./EligibleCourses";
+import { RecommendedCourses } from "./RecommendedCourses";
 import { describeNeed } from "../../lib/format";
 import type { Needs, Remaining, Section } from "../../lib/types";
 
@@ -86,6 +87,7 @@ function OutstandingItemRow({ item }: { item: OutstandingItem }) {
         </p>
       )}
 
+      {item.eligible && <RecommendedCourses eligible={item.eligible} />}
       {item.eligible && <EligibleCourses raw={item.eligible} />}
     </li>
   );
