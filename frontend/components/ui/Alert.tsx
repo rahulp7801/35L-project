@@ -1,10 +1,11 @@
 import { ReactNode } from "react";
 
-type Tone = "success" | "error";
+type Tone = "success" | "error" | "info";
 
 const tones: Record<Tone, string> = {
   success: "bg-[#ecfdf5] border-[#a7f3d0] text-success",
   error: "bg-[#fef2f2] border-[#fecaca] text-error",
+  info: "bg-accent-soft border-[#bfdbfe] text-accent",
 };
 
 export function Alert({ tone, children }: { tone: Tone; children: ReactNode }) {
