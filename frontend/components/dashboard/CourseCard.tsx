@@ -1,5 +1,6 @@
 import { Card } from "../ui/Card";
 import { CardHeader } from "../ui/CardHeader";
+import { CourseLink } from "../ui/CourseLink";
 import type { Course } from "../../lib/types";
 
 type Props = {
@@ -23,7 +24,7 @@ export function CourseCard({ title, accent, courses }: Props) {
             >
               <span className="min-w-0 flex-1">
                 <span className="mr-[0.4rem] text-muted">{c.term}</span>
-                <span className="font-medium">{c.code}</span>
+                <CourseLink code={c.code} className="font-medium" />
                 <span className="ml-2 text-muted">{c.title}</span>
               </span>
               <span

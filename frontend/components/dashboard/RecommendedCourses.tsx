@@ -8,6 +8,7 @@ import {
   gpaColor,
   type RecommendResult,
 } from "../../lib/grades";
+import { CourseLink } from "../ui/CourseLink";
 
 // for one unfulfilled requirement, rank its eligible courses by historical GPA and show the top few.
 export function RecommendedCourses({ eligible }: { eligible: string }) {
@@ -49,9 +50,11 @@ export function RecommendedCourses({ eligible }: { eligible: string }) {
             key={`${c.dept}-${c.number}`}
             className="flex items-center gap-2 text-[0.82rem]"
           >
-            <span className="shrink-0 font-mono font-semibold">
-              {c.dept} {c.number}
-            </span>
+            <CourseLink
+              dept={c.dept}
+              number={c.number}
+              className="shrink-0 font-mono font-semibold"
+            />
             <span className="truncate text-muted">{c.title}</span>
             <span
               className="ml-auto shrink-0 font-semibold tabular-nums"
