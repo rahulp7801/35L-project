@@ -29,17 +29,37 @@ function tallyOutstanding(sections: Section[]): Needs {
 
 type Props = {
   sections: Section[];
-  // Optional units-per-quarter forecast. When provided, surfaces a one-line
-  // "at your pace, X quarters to graduate" beneath the existing chips. Kept
-  // optional so existing callers (and tests) don't need updating.
   pace?: PaceForecast | null;
+  // section titles where the user has at least one course in their plan
+  plannedSections?: Set<string>;
 };
 
-export function ProgressCard({ sections, pace }: Props) {
+export function ProgressCard({ sections, pace, plannedSections }: Props) {
   const total = sections.length;
-  const { fulfilled, inProgress, unfulfilled } = tallySections(sections);
-  const pctFulfilled = total ? (fulfilled / total) * 100 : 0;
-  const pctInProgress = total ? (inProgress / total) * 100 : 0;
+  const tally = tallySections(sections);
+  const fulfilled = tally.fulfilled;
+  const inProgress = tally.inProgress;
+
+  // count unfulfilled sections that the user has planned a course for
+  let planned = 0;
+  if (plannedSections) {
+    for (const s of sections) {
+      if (s.status === "unfulfilled" && plannedSections.has(s.title)) planned++;
+    }
+  }
+  const unfulfilled = Math.max(0, tally.unfulfilled - planned);
+
+  let pctFulfilled = 0;
+  let pctPlanned = 0;
+  let pctInProgress = 0;
+  if (total > 0) {
+    pctFulfilled = (fulfilled / total) * 100;
+    pctPlanned = (planned / total) * 100;
+    pctInProgress = (inProgress / total) * 100;
+  }
+  // count fulfilled + planned together for the headline percentage
+  const pctTowardDone = pctFulfilled + pctPlanned;
+
   const { units: unitsLeft = 0, courses: coursesLeft = 0 } = tallyOutstanding(sections);
 
   return (
@@ -47,12 +67,13 @@ export function ProgressCard({ sections, pace }: Props) {
       <div className="mb-[0.85rem] flex items-baseline justify-between border-b border-border pb-[0.6rem]">
         <h2 className="m-0 text-base font-semibold">Progress</h2>
         <span className="text-[0.85rem] font-semibold text-text">
-          {pctFulfilled.toFixed(0)}% fulfilled
+          {pctTowardDone.toFixed(0)}% fulfilled
         </span>
       </div>
 
       <div className="mb-[0.7rem] flex h-2.5 overflow-hidden rounded-full bg-border">
         <div className="bg-success" style={{ width: `${pctFulfilled}%` }} />
+        <div style={{ width: `${pctPlanned}%`, backgroundColor: "var(--planned)" }} />
         <div className="bg-accent" style={{ width: `${pctInProgress}%` }} />
       </div>
 
@@ -60,6 +81,11 @@ export function ProgressCard({ sections, pace }: Props) {
         <span>
           <strong className="text-success">{fulfilled}</strong> fulfilled
         </span>
+        {planned > 0 && (
+          <span>
+            <strong style={{ color: "var(--planned)" }}>{planned}</strong> planned
+          </span>
+        )}
         <span>
           <strong className="text-accent">{inProgress}</strong> in progress
         </span>

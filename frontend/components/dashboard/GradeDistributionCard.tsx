@@ -4,11 +4,24 @@ import { formatGpa, gpaColor } from "../../lib/grades";
 import { completedGradeStats } from "../../lib/stats";
 import type { Course } from "../../lib/types";
 
-// A/B/C/D/F breakdown of the user's completed courses, with the cumulative
-// GPA as a colored headline. Reuses the GradeBars chart from the grade
-// explorer so the visual language stays consistent across the app.
-export function GradeDistributionCard({ completed }: { completed: Course[] }) {
+// A/B/C/D/F breakdown of the user's completed courses with the cumulative
+// gpa as a colored headline.
+export function GradeDistributionCard({
+  completed,
+  cumulativeGpa,
+}: {
+  completed: Course[];
+  // ucla's official gpa from the audit. when set we use it instead of our
+  // own calculation so the number lines up with the Cum. GPA tile at the top.
+  cumulativeGpa?: number | null;
+}) {
   const stats = completedGradeStats(completed);
+  let headlineGpa: number | null;
+  if (cumulativeGpa !== null && cumulativeGpa !== undefined) {
+    headlineGpa = cumulativeGpa;
+  } else {
+    headlineGpa = stats.avg_gpa;
+  }
 
   return (
     <Card className="flex h-full flex-col">
@@ -28,9 +41,9 @@ export function GradeDistributionCard({ completed }: { completed: Course[] }) {
           <div className="mb-[0.85rem] flex items-baseline justify-between">
             <span
               className="text-2xl font-semibold tabular-nums"
-              style={{ color: gpaColor(stats.avg_gpa) }}
+              style={{ color: gpaColor(headlineGpa) }}
             >
-              {formatGpa(stats.avg_gpa)}
+              {formatGpa(headlineGpa)}
             </span>
             <span className="text-[0.75rem] text-muted">cumulative GPA</span>
           </div>

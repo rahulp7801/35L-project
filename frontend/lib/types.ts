@@ -52,12 +52,19 @@ export type Parsed = {
   cumulative_gpa?: CumulativeGpa | null;
 };
 
+// one entry in the user's plan. section is the requirement it fulfills.
+export type PlannedCourse = {
+  code: string;
+  section: string;
+};
+
 export type Upload = {
   id: string;
   filename: string;
   size: number;
   uploadedAt: Timestamp | null;
   parsed: Parsed;
+  planned?: PlannedCourse[];
 };
 
 export type UploadStatus = "idle" | "uploading" | "done" | "error";

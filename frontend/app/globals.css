@@ -11,6 +11,8 @@
   --color-accent-soft: #eff6ff;
   --color-success: #16a34a;
   --color-error: #dc2626;
+  --color-planned: #f59e0b;
+  --color-planned-soft: #fef3c7;
 }
 
 :root {
@@ -24,6 +26,8 @@
   --accent-soft: var(--color-accent-soft);
   --success: var(--color-success);
   --error: var(--color-error);
+  --planned: var(--color-planned);
+  --planned-soft: var(--color-planned-soft);
 }
 
 html,

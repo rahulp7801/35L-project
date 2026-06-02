@@ -43,14 +43,23 @@ function remainingToItem(r: Remaining): OutstandingItem {
   };
 }
 
+// pass these in to enable the add-to-plan button on each recommendation.
+type PlanProps = {
+  plannedBySection?: Map<string, Set<string>>;
+  onTogglePlan?: (section: string, code: string) => Promise<void> | void;
+};
+
 type Props =
-  | { sections: Section[]; remaining?: never }
-  | { sections?: never; remaining: Remaining[] };
+  | ({ sections: Section[]; remaining?: never } & PlanProps)
+  | ({ sections?: never; remaining: Remaining[] } & PlanProps);
 
 export function OutstandingCard(props: Props) {
-  const items: OutstandingItem[] = props.sections
-    ? props.sections.map(sectionToItem)
-    : props.remaining.map(remainingToItem);
+  let items: OutstandingItem[];
+  if (props.sections) {
+    items = props.sections.map(sectionToItem);
+  } else {
+    items = props.remaining.map(remainingToItem);
+  }
 
   return (
     <Card>
@@ -59,16 +68,41 @@ export function OutstandingCard(props: Props) {
         <p className="m-0 text-[0.9rem] text-muted">All requirements satisfied.</p>
       ) : (
         <ul className="m-0 grid list-none gap-[0.85rem] p-0">
-          {items.map((item, i) => (
-            <OutstandingItemRow key={i} item={item} />
-          ))}
+          {items.map((item, i) => {
+            let planned: Set<string> | undefined;
+            if (props.plannedBySection) planned = props.plannedBySection.get(item.title);
+
+            // re-bind the section title onto the toggle so child rows only need a code
+            let toggle: ((code: string) => Promise<void> | void) | undefined;
+            if (props.onTogglePlan) {
+              const fn = props.onTogglePlan;
+              toggle = (code) => fn(item.title, code);
+            }
+
+            return (
+              <OutstandingItemRow
+                key={i}
+                item={item}
+                planned={planned}
+                onTogglePlan={toggle}
+              />
+            );
+          })}
         </ul>
       )}
     </Card>
   );
 }
 
-function OutstandingItemRow({ item }: { item: OutstandingItem }) {
+function OutstandingItemRow({
+  item,
+  planned,
+  onTogglePlan,
+}: {
+  item: OutstandingItem;
+  planned?: Set<string>;
+  onTogglePlan?: (code: string) => Promise<void> | void;
+}) {
   return (
     <li className="rounded-lg border border-border bg-accent-soft px-[0.85rem] py-3">
       <p className="m-0 text-[0.92rem] font-semibold">{item.title}</p>
@@ -87,8 +121,20 @@ function OutstandingItemRow({ item }: { item: OutstandingItem }) {
         </p>
       )}
 
-      {item.eligible && <RecommendedCourses eligible={item.eligible} />}
-      {item.eligible && <EligibleCourses raw={item.eligible} />}
+      {item.eligible && (
+        <RecommendedCourses
+          eligible={item.eligible}
+          planned={planned}
+          onTogglePlan={onTogglePlan}
+        />
+      )}
+      {item.eligible && (
+        <EligibleCourses
+          raw={item.eligible}
+          planned={planned}
+          onTogglePlan={onTogglePlan}
+        />
+      )}
     </li>
   );
 }
