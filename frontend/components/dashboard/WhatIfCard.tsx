@@ -4,8 +4,8 @@ import { useMemo, useState } from "react";
 import { Card } from "../ui/Card";
 import { CourseLink } from "../ui/CourseLink";
 import { formatGpa, gpaColor } from "../../lib/grades";
-import { cumulativeGpa, GPA_POINTS } from "../../lib/stats";
-import type { Course } from "../../lib/types";
+import { cumulativeGpa, GPA_POINTS, projectGpa } from "../../lib/stats";
+import type { Course, CumulativeGpa } from "../../lib/types";
 
 // Grades the user can pick from. Order matches the dropdown — A+ at the top
 // since that's the optimistic default.
@@ -18,9 +18,11 @@ const LETTER_GRADES = Object.keys(GPA_POINTS);
 export function WhatIfCard({
   completed,
   inProgress,
+  cumulative,
 }: {
   completed: Course[];
   inProgress: Course[];
+  cumulative?: CumulativeGpa | null;
 }) {
   // Default every in-progress course to an A (optimistic). Keyed by term+code
   // so two re-takes of the same course in different quarters don't collide.
@@ -33,10 +35,16 @@ export function WhatIfCard({
       ...c,
       grade: picks[keyFor(c)] ?? "A",
     }));
+    if (cumulative) {
+      return projectGpa(cumulative, hypothetical);
+    }
     return cumulativeGpa([...completed, ...hypothetical]);
-  }, [completed, inProgress, picks]);
+  }, [completed, inProgress, picks, cumulative]);
 
-  const current = useMemo(() => cumulativeGpa(completed), [completed]);
+  const current = useMemo(() => {
+    if (cumulative) return cumulative.gpa;
+    return cumulativeGpa(completed);
+  }, [completed, cumulative]);
   const delta = projected !== null && current !== null ? projected - current : 0;
 
   if (inProgress.length === 0) return null;

@@ -38,11 +38,24 @@ export type Section = {
   in_progress: Course[];
 };
 
+export type CumulativeGpa = {
+  units: number;
+  points: number;
+  gpa: number;
+};
+
 export type Parsed = {
   completed: Course[];
   in_progress: Course[];
   remaining: Remaining[];
   sections?: Section[];
+  cumulative_gpa?: CumulativeGpa | null;
+};
+
+// one entry in the user's plan. section is the requirement it fulfills.
+export type PlannedCourse = {
+  code: string;
+  section: string;
 };
 
 export type Upload = {
@@ -51,6 +64,7 @@ export type Upload = {
   size: number;
   uploadedAt: Timestamp | null;
   parsed: Parsed;
+  planned?: PlannedCourse[];
 };
 
 export type UploadStatus = "idle" | "uploading" | "done" | "error";

@@ -38,7 +38,13 @@ export function StatStrip({ parsed }: { parsed: Parsed }) {
     : parsed.remaining.length;
   const pct = total ? Math.round((fulfilled / total) * 100) : null;
 
-  const gpa = cumulativeGpa(parsed.completed);
+  // use UCLA's gpa from the audit if we got it, otherwise compute our own
+  let gpa: number | null;
+  if (parsed.cumulative_gpa) {
+    gpa = parsed.cumulative_gpa.gpa;
+  } else {
+    gpa = cumulativeGpa(parsed.completed);
+  }
   const unitsDone = totalUnits(parsed.completed);
   const unitsInProgress = totalUnits(parsed.in_progress);
 
