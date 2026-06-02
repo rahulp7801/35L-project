@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Card } from "../ui/Card";
 import { TextField } from "../ui/TextField";
+import { CourseLink } from "../ui/CourseLink";
 import { GradeBars } from "./GradeBars";
 import {
   searchCourses,
@@ -184,9 +185,11 @@ function CourseDetail({ course }: { course: CourseGrades }) {
     <div className="mt-4 grid gap-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <div className="font-mono text-[0.85rem] font-semibold text-muted">
-            {course.dept} {course.number}
-          </div>
+          <CourseLink
+            dept={course.dept}
+            number={course.number}
+            className="block font-mono text-[0.85rem] font-semibold text-muted"
+          />
           <div className="text-[1.05rem] font-semibold leading-tight">
             {course.title}
           </div>
