@@ -41,6 +41,14 @@ _NEEDS = re.compile(r"^NEEDS:\s*(.+)$")
 _SELECT = re.compile(r"^SELECT FROM:\s*(.*)$")
 _NOT_FROM = re.compile(r"^->\s*NOT FROM:")
 
+# DARS shows lines like "22.0 GRADED ATMPTD UNITS  47.5 POINTS  2.159 GPA"
+# one per quarter plus one for the total. the total has the most units.
+_GPA_LINE = re.compile(
+    r"(\d+(?:\.\d+)?)\s+GRADED\s+ATMPTD\s+UNITS\s+"
+    r"(\d+(?:\.\d+)?)\s+POINTS\s+"
+    r"(\d+(?:\.\d+)?)\s+GPA"
+)
+
 
 def _collapse_periodic(tokens: list[str]) -> list[str]:
     """If tokens are a periodic repeat (e.g. ['PHILOS','PHILOS','PHILOS'] or
@@ -381,6 +389,23 @@ def _parse_sections(lines: list[dict]) -> list[dict]:
     return out
 
 
+def _parse_cumulative_gpa(lines: list[dict]) -> dict | None:
+    # find the gpa line with the biggest units count, that's the cumulative one
+    best: dict | None = None
+    for ln in lines:
+        m = _GPA_LINE.search(ln["text"])
+        if not m:
+            continue
+        units = float(m.group(1))
+        if best is None or units > best["units"]:
+            best = {
+                "units": units,
+                "points": float(m.group(2)),
+                "gpa": float(m.group(3)),
+            }
+    return best
+
+
 def parse_pdf(source: Union[str, Path, bytes]) -> dict:
     lines = _extract_lines(source)
     completed, in_progress = _parse_courses(lines)
@@ -389,6 +414,7 @@ def parse_pdf(source: Union[str, Path, bytes]) -> dict:
         "in_progress": in_progress,
         "remaining": _parse_remaining(lines),
         "sections": _parse_sections(lines),
+        "cumulative_gpa": _parse_cumulative_gpa(lines),
     }
 
 

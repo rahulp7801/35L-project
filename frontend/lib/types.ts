@@ -38,11 +38,18 @@ export type Section = {
   in_progress: Course[];
 };
 
+export type CumulativeGpa = {
+  units: number;
+  points: number;
+  gpa: number;
+};
+
 export type Parsed = {
   completed: Course[];
   in_progress: Course[];
   remaining: Remaining[];
   sections?: Section[];
+  cumulative_gpa?: CumulativeGpa | null;
 };
 
 export type Upload = {

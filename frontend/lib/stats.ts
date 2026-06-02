@@ -12,7 +12,7 @@
 //      "SU24". The backend grades dataset uses a different ("24F") encoding,
 //      so we keep a local DARS-specific parser here rather than share code.
 
-import type { Course, Parsed } from "./types";
+import type { Course, CumulativeGpa, Parsed } from "./types";
 import type { GradeStats } from "./grades";
 
 // 4.0 grade-point scale. Letter grades not in this map (P, NP, IP, S, U, NR,
@@ -48,6 +48,28 @@ export function cumulativeGpa(courses: Course[]): number | null {
 // toward graduation even though they don't contribute to GPA.
 export function totalUnits(courses: Course[]): number {
   return courses.reduce((sum, c) => sum + c.units, 0);
+}
+
+// gpa = total points / total units. start from UCLA's tally if we got it
+// from the audit, then add the new courses on top.
+export function projectGpa(
+  base: CumulativeGpa | null | undefined,
+  extras: Course[],
+): number | null {
+  let units = 0;
+  let points = 0;
+  if (base) {
+    units = base.units;
+    points = base.points;
+  }
+  for (const c of extras) {
+    const p = GPA_POINTS[c.grade];
+    if (p === undefined) continue;
+    units += c.units;
+    points += p * c.units;
+  }
+  if (units === 0) return null;
+  return points / units;
 }
 
 // --- grade band breakdown ---
