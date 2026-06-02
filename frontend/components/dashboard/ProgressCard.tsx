@@ -1,6 +1,7 @@
 import { Card } from "../ui/Card";
 import { Chip } from "../ui/Chip";
 import type { Needs, Section } from "../../lib/types";
+import type { PaceForecast } from "../../lib/stats";
 
 type Totals = { fulfilled: number; inProgress: number; unfulfilled: number };
 
@@ -26,7 +27,15 @@ function tallyOutstanding(sections: Section[]): Needs {
   return out;
 }
 
-export function ProgressCard({ sections }: { sections: Section[] }) {
+type Props = {
+  sections: Section[];
+  // Optional units-per-quarter forecast. When provided, surfaces a one-line
+  // "at your pace, X quarters to graduate" beneath the existing chips. Kept
+  // optional so existing callers (and tests) don't need updating.
+  pace?: PaceForecast | null;
+};
+
+export function ProgressCard({ sections, pace }: Props) {
   const total = sections.length;
   const { fulfilled, inProgress, unfulfilled } = tallySections(sections);
   const pctFulfilled = total ? (fulfilled / total) * 100 : 0;
@@ -69,6 +78,16 @@ export function ProgressCard({ sections }: { sections: Section[] }) {
           )}
           {unitsLeft > 0 && <Chip label={`${unitsLeft.toFixed(1)} units to go`} />}
         </div>
+      )}
+
+      {pace && pace.quartersRemaining > 0 && (
+        <p className="m-0 mt-[0.6rem] text-[0.82rem] text-muted">
+          At your pace ({pace.avgUnitsPerQuarter.toFixed(1)} units/qtr), about{" "}
+          <strong className="text-text">
+            {pace.quartersRemaining} quarter{pace.quartersRemaining === 1 ? "" : "s"}
+          </strong>{" "}
+          to {pace.unitsRemaining.toFixed(0)} units left.
+        </p>
       )}
     </Card>
   );
