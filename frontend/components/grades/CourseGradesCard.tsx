@@ -7,11 +7,13 @@ import { GradeBars } from "./GradeBars";
 import {
   searchCourses,
   fetchCourseGrades,
+  gradeBuckets,
   formatGpa,
   gpaColor,
   titleCaseName,
   type CourseHit,
   type CourseGrades,
+  type InstructorStats,
 } from "../../lib/grades";
 
 // search a course and view its historical grade distribution.
@@ -127,6 +129,51 @@ export function CourseGradesCard() {
 
 const INSTRUCTOR_PREVIEW = 5;
 
+// One professor row: an A-percentage bar, average GPA, and enrollment, expandable to that professor's full grade distribution so professors can be compared.
+function ProfessorRow({ ins }: { ins: InstructorStats }) {
+  const [open, setOpen] = useState(false);
+  const aPct = gradeBuckets(ins).find((b) => b.label === "A")?.pct ?? 0;
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-3 text-left text-[0.84rem]"
+      >
+        <span className="truncate">{titleCaseName(ins.instructor)}</span>
+        <span className="ml-auto flex shrink-0 items-center gap-2.5">
+          <span className="flex items-center gap-1.5">
+            <span className="h-1.5 w-10 overflow-hidden rounded-full bg-border">
+              <span
+                className="block h-full rounded-full bg-success"
+                style={{ width: `${aPct}%` }}
+              />
+            </span>
+            <span className="w-11 text-right text-muted tabular-nums">
+              {aPct.toFixed(0)}% A
+            </span>
+          </span>
+          <span
+            className="w-9 text-right font-semibold tabular-nums"
+            style={{ color: gpaColor(ins.avg_gpa) }}
+          >
+            {formatGpa(ins.avg_gpa)}
+          </span>
+          <span className="w-12 text-right text-muted tabular-nums">
+            {ins.graded.toLocaleString()}
+          </span>
+        </span>
+      </button>
+      {open && (
+        <div className="mb-1 mt-2">
+          <GradeBars stats={ins} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CourseDetail({ course }: { course: CourseGrades }) {
   const [showAll, setShowAll] = useState(false);
   const { overall, by_instructor } = course;
@@ -169,28 +216,17 @@ function CourseDetail({ course }: { course: CourseGrades }) {
 
       {by_instructor.length > 0 && (
         <div>
-          <div className="mb-[0.4rem] text-[0.75rem] font-medium uppercase tracking-wide text-muted">
-            By professor · {by_instructor.length}
+          <div className="mb-[0.4rem] flex items-baseline justify-between">
+            <span className="text-[0.75rem] font-medium uppercase tracking-wide text-muted">
+              By professor · {by_instructor.length}
+            </span>
+            {by_instructor.length > 1 && (
+              <span className="text-[0.7rem] text-muted">tap to compare</span>
+            )}
           </div>
           <div className="grid gap-[0.3rem]">
             {visible.map((ins) => (
-              <div
-                key={ins.instructor}
-                className="flex items-center gap-3 text-[0.84rem]"
-              >
-                <span className="truncate">{titleCaseName(ins.instructor)}</span>
-                <span className="ml-auto flex shrink-0 items-center gap-2">
-                  <span
-                    className="font-semibold tabular-nums"
-                    style={{ color: gpaColor(ins.avg_gpa) }}
-                  >
-                    {formatGpa(ins.avg_gpa)}
-                  </span>
-                  <span className="w-12 text-right text-muted tabular-nums">
-                    {ins.graded.toLocaleString()}
-                  </span>
-                </span>
-              </div>
+              <ProfessorRow key={ins.instructor} ins={ins} />
             ))}
           </div>
           {hidden > 0 && (
