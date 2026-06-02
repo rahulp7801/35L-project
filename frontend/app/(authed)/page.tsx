@@ -86,6 +86,7 @@ export default function Dashboard() {
             <WhatIfCard
               completed={parsed.completed}
               inProgress={parsed.in_progress}
+              cumulative={parsed.cumulative_gpa ?? null}
             />
           )}
 
