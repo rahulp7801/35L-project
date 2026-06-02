@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { CourseGradesCard } from "../grades/CourseGradesCard";
 import { InstructorGradesCard } from "../grades/InstructorGradesCard";
 import { BrowseCoursesCard } from "../grades/BrowseCoursesCard";
+import { CompareProfessorsCard } from "../grades/CompareProfessorsCard";
 
 // Tabbed shell that switches between the three search widgets on /explore.
 //
@@ -13,11 +14,12 @@ import { BrowseCoursesCard } from "../grades/BrowseCoursesCard";
 // at-mount side-effect is BrowseCoursesCard fetching the department list,
 // which is module-cached in lib/grades.ts.
 
-type TabId = "course" | "professor" | "browse";
+type TabId = "course" | "professor" | "compare" | "browse";
 
 const TABS: { id: TabId; label: string; description: string }[] = [
   { id: "course", label: "Course", description: "Look up one course by name" },
   { id: "professor", label: "Professor", description: "Look up an instructor by name" },
+  { id: "compare", label: "Compare", description: "Compare A% and distributions across professors" },
   { id: "browse", label: "Browse", description: "Filter for easy electives" },
 ];
 
@@ -88,6 +90,9 @@ export function ExplorerTabs() {
       </TabPanel>
       <TabPanel id="professor" active={active}>
         <InstructorGradesCard />
+      </TabPanel>
+      <TabPanel id="compare" active={active}>
+        <CompareProfessorsCard />
       </TabPanel>
       <TabPanel id="browse" active={active}>
         <BrowseCoursesCard />
