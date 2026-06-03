@@ -9,7 +9,6 @@ import type { UploadStatus } from "../../lib/types";
 type Props = {
   file: File;
   status: UploadStatus;
-  progress: number;
   errorMessage: string;
   onCancel: () => void;
   onUpload: () => void;
@@ -18,7 +17,6 @@ type Props = {
 export function UploadPreviewModal({
   file,
   status,
-  progress,
   errorMessage,
   onCancel,
   onUpload,
@@ -72,8 +70,6 @@ export function UploadPreviewModal({
             <Alert tone="error">✕ {errorMessage}</Alert>
           )}
 
-          {status === "uploading" && <UploadProgressBar progress={progress} />}
-
           <div className="flex justify-end gap-[0.6rem]">
             <Button onClick={onCancel} disabled={status === "uploading"}>
               Cancel
@@ -91,23 +87,6 @@ export function UploadPreviewModal({
             </Button>
           </div>
         </footer>
-      </div>
-    </div>
-  );
-}
-
-function UploadProgressBar({ progress }: { progress: number }) {
-  return (
-    <div>
-      <div className="mb-[0.35rem] flex justify-between text-[0.82rem] text-muted">
-        <span>Uploading…</span>
-        <span>{progress}%</span>
-      </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-border">
-        <div
-          className="h-full bg-accent transition-[width] duration-150 ease-out"
-          style={{ width: `${progress}%` }}
-        />
       </div>
     </div>
   );

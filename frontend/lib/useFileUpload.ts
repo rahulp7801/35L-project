@@ -12,10 +12,9 @@ type State = {
   file: File | null;
   status: UploadStatus;
   message: string;
-  progress: number;
 };
 
-const INITIAL: State = { file: null, status: "idle", message: "", progress: 0 };
+const INITIAL: State = { file: null, status: "idle", message: "" };
 
 export function useFileUpload(user: User | null) {
   const [state, setState] = useState<State>(INITIAL);
@@ -44,7 +43,7 @@ export function useFileUpload(user: User | null) {
   async function upload() {
     if (!state.file || !user) return;
     const file = state.file;
-    setState((s) => ({ ...s, status: "uploading", message: "", progress: 0 }));
+    setState((s) => ({ ...s, status: "uploading", message: "" }));
 
     try {
       const fd = new FormData();
@@ -62,7 +61,7 @@ export function useFileUpload(user: User | null) {
         uploadedAt: serverTimestamp(),
         parsed,
       });
-      setState({ file: null, status: "done", message: `saved ${file.name}`, progress: 100 });
+      setState({ file: null, status: "done", message: `saved ${file.name}` });
     } catch (e) {
       setState((s) => ({
         ...s,
