@@ -4,6 +4,9 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from concurrent.futures import ThreadPoolExecutor
+
+import soc
 from parser import parse_pdf
 from grades import get_grade_data
 from planner import PlannerConfig, parse_dars_term, plan as run_plan
@@ -161,13 +164,42 @@ class EligibleGroup(BaseModel):
 class RecommendRequest(BaseModel):
     groups: list[EligibleGroup] = []
     limit: int = 5
+    timing_threshold: float = 0.2
 
 
 @app.post("/recommend")
 def recommend(req: RecommendRequest):
-    """Rank a requirement's eligible courses by historical average GPA."""
+    """Rank a requirement's eligible courses by historical average GPA.
+
+    We look up who's teaching each course next term on UCLA's public Schedule of Classes and, 
+    when that instructor historically grades above the course baseline by
+    `timing_threshold`, mark it a favorable offering. 
+    """
+    data = get_grade_data()
     groups = [g.model_dump() for g in req.groups]
-    return get_grade_data().recommend(groups, limit=req.limit)
+    result = data.recommend(groups, limit=req.limit)
+
+    term = soc.current_term()
+
+    def enrich(course: dict) -> dict:
+        names = soc.course_instructors(term, course["dept"], course["number"])
+        course["timing"] = data.instructor_timing(
+            course["dept"], course["number"], names, term,
+            threshold=req.timing_threshold,
+        )
+        return course
+
+    # Each lookup is one independent network call
+    courses = result["courses"]
+    if courses and soc.enabled():
+        with ThreadPoolExecutor(max_workers=min(8, len(courses))) as pool:
+            courses = list(pool.map(enrich, courses))
+    else:
+        for course in courses:
+            course["timing"] = None
+    result["courses"] = courses
+    result["term"] = term
+    return result
 
 
 class PlannerRequirement(BaseModel):
