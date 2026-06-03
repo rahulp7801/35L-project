@@ -6,7 +6,7 @@
 
 import { PLAN_ENDPOINT } from "./constants";
 import { parseEligible } from "./eligible";
-import { paceForecast, summarizeByTerm, UNITS_TO_GRADUATE } from "./stats";
+import { paceForecast, splitCourseCode, summarizeByTerm } from "./stats";
 import type { Parsed, Section } from "./types";
 
 // --- response shape (mirrors backend/planner.py) ---
@@ -100,15 +100,6 @@ export async function fetchPlan(req: PlanRequest): Promise<PlanResponse> {
 
 // --- bridging parsed DARS data into the planner input ---
 
-// Split a "COM SCI 35L"-style course code (parsed.completed / in_progress) into
-// dept + number. Mirrors lib/stats.splitCourseCode but inlined to avoid the
-// optional-chain dance; we only call it on known-good rows.
-function splitCode(code: string): { dept: string; number: string } | null {
-  const i = code.lastIndexOf(" ");
-  if (i <= 0 || i >= code.length - 1) return null;
-  return { dept: code.slice(0, i), number: code.slice(i + 1) };
-}
-
 // Flatten parseEligible's dept-grouped output into flat (dept, number) pairs.
 function eligibleToPairs(eligible: string): { dept: string; number: string }[] {
   const groups = parseEligible(eligible);
@@ -136,11 +127,11 @@ export function buildPlanRequest(
 
   const excluded: { dept: string; number: string }[] = [];
   for (const c of parsed.completed) {
-    const split = splitCode(c.code);
+    const split = splitCourseCode(c.code);
     if (split) excluded.push(split);
   }
   for (const c of parsed.in_progress) {
-    const split = splitCode(c.code);
+    const split = splitCourseCode(c.code);
     if (split) excluded.push(split);
   }
 
@@ -232,5 +223,3 @@ export function planRequestSummary(req: PlanRequest): {
     candidates: req.requirements.reduce((sum, r) => sum + r.candidates.length, 0),
   };
 }
-
-export { UNITS_TO_GRADUATE };

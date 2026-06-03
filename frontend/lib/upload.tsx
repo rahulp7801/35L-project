@@ -59,7 +59,6 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         <UploadPreviewModal
           file={upload.file}
           status={upload.status}
-          progress={upload.progress}
           errorMessage={upload.message}
           onCancel={() => upload.pickFile(null)}
           onUpload={upload.upload}
