@@ -162,20 +162,16 @@ export default function Dashboard() {
               )}
             </div>
             <div className="flex min-w-0 flex-col gap-5">
-              <div className="min-h-0 flex-1">
-                <CourseCard
-                  title="Completed"
-                  accent="var(--success)"
-                  courses={parsed.completed}
-                />
-              </div>
-              <div className="min-h-0 flex-1">
-                <CourseCard
-                  title="In progress"
-                  accent="var(--accent)"
-                  courses={parsed.in_progress}
-                />
-              </div>
+              <CourseCard
+                title="Completed"
+                accent="var(--success)"
+                courses={parsed.completed}
+              />
+              <CourseCard
+                title="In progress"
+                accent="var(--accent)"
+                courses={parsed.in_progress}
+              />
             </div>
           </div>
 

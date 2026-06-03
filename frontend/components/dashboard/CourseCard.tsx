@@ -11,12 +11,12 @@ type Props = {
 
 export function CourseCard({ title, accent, courses }: Props) {
   return (
-    <Card className="flex h-full flex-col">
+    <Card className="flex flex-col">
       <CardHeader title={title} count={courses.length} accent={accent} />
       {courses.length === 0 ? (
         <p className="m-0 text-[0.9rem] text-muted">Nothing here yet.</p>
       ) : (
-        <ul className="m-0 grid min-h-0 flex-1 list-none gap-2 overflow-y-auto p-0 pr-1">
+        <ul className="m-0 flex min-h-0 flex-1 list-none flex-col gap-2 overflow-y-auto p-0 pr-1">
           {courses.map((c, i) => (
             <li
               key={`${c.term}-${c.code}-${i}`}
