@@ -91,6 +91,9 @@ export default function PlanPage() {
   );
 }
 
+const SEASON_OPTIONS = ["all", "Fall", "Winter", "Spring", "Summer"] as const;
+type SeasonFilter = (typeof SEASON_OPTIONS)[number];
+
 function NoUploadState() {
   return (
     <Card className="!py-12 text-center">
@@ -118,8 +121,18 @@ function Disclaimer() {
 
 function PlanBody({ plan }: { plan: PlanResponse }) {
   const { quarters, unsatisfied, config } = plan;
+  const [seasonFilter, setSeasonFilter] = useState<SeasonFilter>("all");
+  const visibleQuarters =
+    seasonFilter === "all"
+      ? quarters
+      : quarters.filter((q) => q.season === seasonFilter);
+
   return (
     <div className="grid grid-cols-1 gap-5">
+      {quarters.length > 0 && (
+        <QuarterFilter value={seasonFilter} onChange={setSeasonFilter} />
+      )}
+
       {quarters.length === 0 && (
         <Card>
           <p className="m-0 text-[0.9rem] text-muted">
@@ -129,7 +142,16 @@ function PlanBody({ plan }: { plan: PlanResponse }) {
         </Card>
       )}
 
-      {quarters.map((q) => (
+      {quarters.length > 0 && visibleQuarters.length === 0 && (
+        <Card>
+          <p className="m-0 text-[0.9rem] text-muted">
+            No {seasonFilter} quarters in this plan. Pick a different season or
+            switch back to All.
+          </p>
+        </Card>
+      )}
+
+      {visibleQuarters.map((q) => (
         <QuarterCard key={q.term_code} quarter={q} firstPassCap={config.first_pass_cap} />
       ))}
 
@@ -154,6 +176,37 @@ function PlanBody({ plan }: { plan: PlanResponse }) {
           </ul>
         </Card>
       )}
+    </div>
+  );
+}
+
+function QuarterFilter({
+  value,
+  onChange,
+}: {
+  value: SeasonFilter;
+  onChange: (v: SeasonFilter) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-[0.8rem]">
+      <span className="text-muted">Show:</span>
+      {SEASON_OPTIONS.map((opt) => {
+        const active = opt === value;
+        return (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => onChange(opt)}
+            className={`rounded-full border px-3 py-1 transition-colors ${
+              active
+                ? "border-accent bg-accent text-white"
+                : "border-border bg-card text-text hover:bg-accent-soft"
+            }`}
+          >
+            {opt === "all" ? "All quarters" : `${opt} only`}
+          </button>
+        );
+      })}
     </div>
   );
 }

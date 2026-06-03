@@ -223,6 +223,23 @@ class GradeData:
         # Both indexes are lazy: built on first access, reused thereafter.
         self._by_dept: Optional[dict[str, list[str]]] = None
         self._by_instructor: Optional[dict[str, list[tuple[str, str]]]] = None
+        # Latest calendar year observed across all terms; computed once.
+        self._latest_year: Optional[int] = None
+
+    def latest_year(self) -> Optional[int]:
+        """Most recent calendar year present in any term across the dataset.
+
+        Used as the anchor for "recent" season windows so we don't count a
+        course as Fall-offered just because it ran in Fall 2014."""
+        if self._latest_year is None:
+            best = 0
+            for agg in self._courses.values():
+                for term in agg.by_term:
+                    y = decode_term(term)["year"]
+                    if y and y > best:
+                        best = y
+            self._latest_year = best or None
+        return self._latest_year
 
     def _slot(self, dept: str, number: str) -> _CourseAgg:
         key = (dept, number)
@@ -273,11 +290,19 @@ class GradeData:
         if agg is None:
             return None
         overall = compute_stats(agg.overall)
+        # Only count offerings from the most recent 2 academic years in the
+        # dataset, so the "Offered: …" signal reflects what's actually being
+        # taught now rather than what ran a decade ago. min_year is inclusive.
+        latest = self.latest_year()
+        min_year = (latest - 1) if latest is not None else None
         seasons_seen: set[str] = set()
         for term in agg.by_term:
             decoded = decode_term(term)
-            if decoded["quarter"]:
-                seasons_seen.add(decoded["quarter"])
+            if not decoded["quarter"]:
+                continue
+            if min_year is not None and (decoded["year"] or 0) < min_year:
+                continue
+            seasons_seen.add(decoded["quarter"])
         season_order = ["Fall", "Winter", "Spring", "Summer"]
         seasons = [s for s in season_order if s in seasons_seen]
         instructors: list[dict] = []
