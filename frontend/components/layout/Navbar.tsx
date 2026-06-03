@@ -72,7 +72,9 @@ export function Navbar() {
   );
 }
 
-// Compact user marker for the navbar row: avatar + sign-out.
+// Compact user marker for the navbar row: avatar + sign-out. The fuller
+// UserBadge (with name + email block) is intentionally not reused here — it's
+// too tall for a navbar.
 function NavbarUser({ user, onLogout }: { user: User; onLogout: () => void }) {
   const title = user.displayName || user.email || "Account";
   return (
