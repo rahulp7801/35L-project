@@ -61,6 +61,12 @@ _LEVELS: dict[str, tuple[int, int]] = {
     "graduate": (200, 10_000),
 }
 
+# A course is flagged as a "favorable timing" pick when its most-recent instructor averages at least this many GPA points above the course's overall baseline
+FAVORABLE_TIMING_THRESHOLD = 0.2
+
+# Don't trust an instructor's course history below this many letter-graded students
+_MIN_TIMING_GRADED = 10
+
 
 def decode_term(code: str) -> dict:
     """Turn a raw term code into {code, year, quarter, label, sort}.
@@ -165,6 +171,48 @@ class _CourseAgg:
             "by_instructor": instructors,
             "by_term": terms,
         }
+
+
+def _name_parts(name: str) -> tuple[str, str]:
+    """Split a 'LAST, FIRST ...' name into (LAST, INITIALS).
+
+    Works on both our CPRA form ('SMALLBERG, DAVID A') and the Schedule of
+    Classes form ('Smallberg, D.A.'). Last name is upper-cased whole; initials
+    are the leading letters of each given-name token, so 'DAVID A' and 'D.A.'
+    both reduce to 'DA'."""
+    last, _, rest = name.partition(",")
+    last = re.sub(r"\s+", " ", last).strip().upper()
+    initials = "".join(tok[0] for tok in re.findall(r"[A-Za-z]+", rest)).upper()
+    return last, initials
+
+
+def match_instructor_name(soc_name: str, candidates: list[str]) -> Optional[str]:
+    """Resolve a Schedule-of-Classes instructor name to one of `candidates`.
+
+    The SOC lists instructors as 'Last, F.M.', while our grade data stores
+    'LAST, FIRST MIDDLE'. We match on last name plus first initial within the
+    handful of instructors who've actually taught the course, preferring the
+    candidate whose initials agree most with the SOC listing. Returns the
+    matching candidate string, or None when nothing lines up."""
+    s_last, s_init = _name_parts(soc_name)
+    if not s_last:
+        return None
+    best: Optional[tuple[int, str]] = None
+    for cand in candidates:
+        c_last, c_init = _name_parts(cand)
+        if c_last != s_last:
+            continue
+        if s_init and c_init and s_init[0] != c_init[0]:
+            continue
+        # Longer shared initial prefix = stronger match (breaks same-surname ties).
+        shared = 0
+        for a, b in zip(s_init, c_init):
+            if a != b:
+                break
+            shared += 1
+        if best is None or shared > best[0]:
+            best = (shared, cand)
+    return best[1] if best else None
 
 
 class GradeData:
@@ -342,7 +390,11 @@ class GradeData:
         return [(dept, number)] if (dept, number) in self._courses else []
 
     def recommend(self, groups: list[dict], limit: int = 5) -> dict:
-        """Rank eligible courses for a requirement by historical average GPA."""
+        """Rank eligible courses for a requirement by historical average GPA.
+
+        Pure ranking only — the upcoming-quarter "favorable timing" flag is
+        layered on by the API endpoint, which enriches the top rows with live
+        Schedule-of-Classes data via instructor_timing()."""
         candidates: dict[tuple[str, str], _CourseAgg] = {}
         for g in groups:
             dept = normalize_dept(g.get("dept", ""))
@@ -366,6 +418,60 @@ class GradeData:
         # Best GPA first; courses with no letter grades sink to the bottom.
         rows.sort(key=lambda r: (r["avg_gpa"] is not None, r["avg_gpa"] or 0), reverse=True)
         return {"total_with_data": len(rows), "courses": rows[:limit]}
+
+    def instructor_timing(
+        self,
+        dept: str,
+        number: str,
+        instructor_names: list[str],
+        term: str,
+        threshold: float = FAVORABLE_TIMING_THRESHOLD,
+        min_graded: int = _MIN_TIMING_GRADED,
+    ) -> Optional[dict]:
+        """Compare an upcoming term's instructor(s) against the course baseline.
+
+        `instructor_names` are the names the Schedule of Classes lists for the
+        course in `term` (e.g. ['Smallberg, D.A.']). Each is resolved to our
+        grade history, credited their full average for the course across every
+        term they've taught it, and compared to the course's overall average.
+
+        When several listed instructors have history, the one with the most
+        letter-graded students wins (the strongest signal). Returns the
+        comparison — with a `favorable` flag set when the instructor beats the
+        baseline by at least `threshold` — or None when no listed instructor has
+        enough grade history to compare, exactly the "no current-quarter
+        instructor data" case where no flag should show."""
+        agg = self._courses.get((normalize_dept(dept), normalize_number(number)))
+        if agg is None or not instructor_names:
+            return None
+        baseline = compute_stats(agg.overall)["avg_gpa"]
+        if baseline is None:
+            return None
+        candidate_names = list(agg.by_instructor.keys())
+        best = None  # (graded, resolved_name, avg_gpa)
+        for soc_name in instructor_names:
+            resolved = match_instructor_name(soc_name, candidate_names)
+            if resolved is None:
+                continue
+            stats = compute_stats(agg.by_instructor[resolved])
+            if stats["avg_gpa"] is None or stats["graded"] < min_graded:
+                continue
+            if best is None or stats["graded"] > best[0]:
+                best = (stats["graded"], resolved, stats["avg_gpa"])
+        if best is None:
+            return None
+        graded, resolved, instr_gpa = best
+        delta = round(instr_gpa - baseline, 3)
+        return {
+            "instructor": resolved,
+            "term": term,
+            "term_label": decode_term(term)["label"],
+            "instructor_avg_gpa": instr_gpa,
+            "instructor_graded": graded,
+            "baseline_avg_gpa": baseline,
+            "delta": delta,
+            "favorable": delta >= threshold,
+        }
 
     def departments(self) -> list[str]:
         """Sorted list of every department code present in the data."""

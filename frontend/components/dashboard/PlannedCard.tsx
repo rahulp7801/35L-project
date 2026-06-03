@@ -10,7 +10,6 @@ import {
   gpaColor,
   type CourseOverview,
 } from "../../lib/grades";
-import { splitCourseCode } from "../../lib/stats";
 import type { Course, PlannedCourse } from "../../lib/types";
 
 // shows the user's plan, grouped by which requirement each course fulfills.
@@ -33,7 +32,7 @@ export function PlannedCard({
     }
     const courses = [];
     for (const p of planned) {
-      const split = splitCourseCode(p.code);
+      const split = splitCode(p.code);
       if (split) courses.push(split);
     }
     if (courses.length === 0) return;
@@ -169,4 +168,11 @@ export function buildKnownUnits(
     if (c.code) out.set(c.code, c.units);
   }
   return out;
+}
+
+// split "MATH 33A" into { dept: "MATH", number: "33A" }
+function splitCode(code: string): { dept: string; number: string } | null {
+  const i = code.lastIndexOf(" ");
+  if (i <= 0) return null;
+  return { dept: code.slice(0, i), number: code.slice(i + 1) };
 }

@@ -87,6 +87,18 @@ export async function fetchGradesBatch(
   return res.json();
 }
 
+// How a course's upcoming-term instructor compares to the course's overall historical baseline.
+export type CourseTiming = {
+  instructor: string;
+  term: string; // SOC term code, e.g. "26F"
+  term_label: string; // e.g. "Fall 2026"
+  instructor_avg_gpa: number;
+  instructor_graded: number;
+  baseline_avg_gpa: number;
+  delta: number;
+  favorable: boolean;
+};
+
 // One ranked course in a requirement's recommendations.
 export type Recommendation = {
   dept: string;
@@ -95,11 +107,14 @@ export type Recommendation = {
   avg_gpa: number | null;
   graded: number;
   total: number;
+  // null when the course isn't offered next term or its instructor has no grade history.
+  timing: CourseTiming | null;
 };
 
 export type RecommendResult = {
   total_with_data: number;
   courses: Recommendation[];
+  term?: string; // the upcoming term timing was resolved against
 };
 
 // Rank a requirement's eligible courses by historical average GPA.
