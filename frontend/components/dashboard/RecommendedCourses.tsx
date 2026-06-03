@@ -91,13 +91,13 @@ export function RecommendedCourses({
 
           return (
             <li key={`${c.dept}-${c.number}`} className="text-[0.82rem]">
-              <div className="flex items-center gap-2">
+              <div className="flex min-w-0 items-center gap-2">
                 <CourseLink
                   dept={c.dept}
                   number={c.number}
                   className="shrink-0 font-mono font-semibold"
                 />
-                <span className="truncate text-muted">{c.title}</span>
+                <span className="min-w-0 flex-1 truncate text-muted">{c.title}</span>
                 <span
                   className="ml-auto shrink-0 font-semibold tabular-nums"
                   style={{ color: gpaColor(c.avg_gpa) }}

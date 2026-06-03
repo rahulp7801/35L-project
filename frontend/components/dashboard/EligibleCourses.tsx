@@ -185,14 +185,14 @@ function ExpandedList({
           return (
             <li
               key={code}
-              className="flex items-center gap-2 text-[0.82rem]"
+              className="flex min-w-0 items-center gap-2 text-[0.82rem]"
             >
               <CourseLink
                 dept={dept}
                 number={number}
                 className="shrink-0 font-mono font-semibold"
               />
-              {title && <span className="truncate text-muted">{title}</span>}
+              {title && <span className="min-w-0 flex-1 truncate text-muted">{title}</span>}
               {gpa !== null ? (
                 <span
                   className="ml-auto shrink-0 font-semibold tabular-nums"
