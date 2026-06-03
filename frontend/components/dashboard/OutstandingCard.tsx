@@ -104,7 +104,9 @@ function OutstandingItemRow({
   onTogglePlan?: (code: string) => Promise<void> | void;
 }) {
   return (
-    <li className="rounded-lg border border-border bg-accent-soft px-[0.85rem] py-3">
+    // [GenAI Use] LLM Response Start - bounding box issue
+    <li className="min-w-0 overflow-hidden rounded-lg border border-border bg-accent-soft px-[0.85rem] py-3">
+    {/* [GenAI Use] LLM Response End - bounding box issue */}
       <p className="m-0 text-[0.92rem] font-semibold">{item.title}</p>
 
       {item.chips.length > 0 && (

@@ -185,14 +185,20 @@ function ExpandedList({
           return (
             <li
               key={code}
-              className="flex items-center gap-2 text-[0.82rem]"
+              // [GenAI Use] Prompt: There is an issue on the dashboard page where the blue background is broken and it bleeds outside the bounding box for the Outstanding requirements. Find this obscure bug, explain why it occurs, and show me how to fix it.
+              // [GenAI Use] LLM Response Start - bounding box issue
+              className="flex min-w-0 items-center gap-2 text-[0.82rem]"
+              // [GenAI Use] LLM Response End - bounding box issue
+              // [GenAI Use] Reflection: I see the bug. The blue <li> in OutstandingCard.tsx:107 is bleeding because its child rows in RecommendedCourses / EligibleCourses use truncate on a flex child without min-w-0. By default, flex items have min-width: auto, which means the truncate doesn't actually shrink — a long course title forces the row wider than its parent, the <li> grows past the card, and the blue background paints into the overflow. Fix: 1. RecommendedCourses.tsx:94,100 — added min-w-0 to the flex row and min-w-0 flex-1 to the title span so the truncate can actually engage. 2. EligibleCourses.tsx:186,195 — same fix for the expanded eligible list rows (the <li> itself is the flex container there). 3. OutstandingCard.tsx:107 — defensively added min-w-0 overflow-hidden to the blue <li> so any future child that misbehaves can't bleed past the requirement card.
             >
               <CourseLink
                 dept={dept}
                 number={number}
                 className="shrink-0 font-mono font-semibold"
               />
-              {title && <span className="truncate text-muted">{title}</span>}
+              {/* [GenAI Use] LLM Response Start - bounding box issue */}
+              {title && <span className="min-w-0 flex-1 truncate text-muted">{title}</span>}
+              {/* [GenAI Use] LLM Response End - bounding box issue */}
               {gpa !== null ? (
                 <span
                   className="ml-auto shrink-0 font-semibold tabular-nums"
