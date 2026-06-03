@@ -188,6 +188,12 @@ export type PaceForecast = {
 // Project how many quarters until graduation, given the student's average
 // units per past quarter and how many units they still need. Returns null
 // when there's no completed history to average over.
+//
+// "Units remaining" is the larger of two signals: UCLA's 180-unit floor minus
+// units already completed/in-progress, vs. the units DARS still wants for all
+// unfulfilled section requirements. Many majors need more major-specific
+// units than the 180 floor implies, so taking the max keeps the forecast
+// honest for those students without ever undershooting the bachelor's floor.
 export function paceForecast(
   parsed: Parsed,
   unitsToGraduate: number = UNITS_TO_GRADUATE,
@@ -197,7 +203,17 @@ export function paceForecast(
   const avg = past.reduce((sum, t) => sum + t.units, 0) / past.length;
   if (avg <= 0) return null;
   const done = totalUnits(parsed.completed) + totalUnits(parsed.in_progress);
-  const remaining = Math.max(0, unitsToGraduate - done);
+  const floorRemaining = Math.max(0, unitsToGraduate - done);
+
+  let sectionRemaining = 0;
+  for (const s of parsed.sections ?? []) {
+    if (s.status !== "unfulfilled") continue;
+    for (const n of s.needs ?? []) {
+      sectionRemaining += n.needs.units ?? 0;
+    }
+  }
+
+  const remaining = Math.max(floorRemaining, sectionRemaining);
   return {
     avgUnitsPerQuarter: avg,
     unitsRemaining: remaining,

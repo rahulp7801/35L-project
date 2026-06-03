@@ -112,7 +112,7 @@ export function ProgressCard({ sections, pace, plannedSections }: Props) {
           <strong className="text-text">
             {pace.quartersRemaining} quarter{pace.quartersRemaining === 1 ? "" : "s"}
           </strong>{" "}
-          to {pace.unitsRemaining.toFixed(0)} units left.
+          left ({pace.unitsRemaining.toFixed(0)} units to go).
         </p>
       )}
     </Card>
